@@ -3,6 +3,11 @@ Python wrapper for the ballchasing.com API.
 
 Note that project is still early in development and is subject to change.
 
+# Installation
+```
+pip install python-ballchasing
+```
+
 # API
 The API is exposed via the `ballchasing.Api` class.
 
