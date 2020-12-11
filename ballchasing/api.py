@@ -80,7 +80,7 @@ class Api:
         self.patron_type = result["type"]
         return result
 
-    def get_replays(self, title: Optional[str] = None, player_name: Optional[str] = None,
+    def get_replays(self, title: Optional[str] = None, player_name: Optional[str] = None, player_id: Optional[str] = None,
                     playlist: Optional[str] = None, season: Optional[int] = None, match_result: Optional[str] = None,
                     min_rank: Optional[str] = None, max_rank: Optional[str] = None, pro: Optional[bool] = None,
                     uploader: Optional[str] = None, group_id: Optional[str] = None,
@@ -92,6 +92,8 @@ class Api:
 
         :param title: filter replays by title.
         :param player_name: filter replays by a player’s name.
+        :param player_id: filter replays by a player’s platform id in the $platform:$id, e.g. steam:76561198141161044,
+        ps4:gamertag, … You can filter replays by multiple player ids, e.g ?player-id=steam:1&player-id=steam:2
         :param playlist: filter replays by one or more playlists.
         :param season: filter replays by season.
         :param match_result: filter your replays by result.
@@ -116,7 +118,7 @@ class Api:
         :param sort_dir: sort direction
         :return: an iterator over the replays returned by the API.
         """
-        params = {"title": title, "player-name": player_name, "playlist": playlist, "season": season,
+        params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist, "season": season,
                   "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank, "pro": pro,
                   "uploader": uploader, "group": group_id, "created-before": created_before,
                   "created-after": created_after, "replay-date-after": replay_after,
