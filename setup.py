@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='python-ballchasing',
-    version='0.1',
+    version='0.1.2',
     author="Rolv-Arild Braaten",
     author_email="rolv_arild@hotmail.com",
     description="Python wrapper for the ballchasing.com API",
