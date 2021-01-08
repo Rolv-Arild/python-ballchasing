@@ -10,6 +10,7 @@ class Api:
     """
     Class for communication with ballchasing.com API (https://ballchasing.com/doc/api)
     """
+
     def __init__(self, auth_key: str, sleep_time_on_rate_limit: Optional[float] = None,
                  print_on_rate_limit: bool = False, base_url=None, do_initial_ping=True):
         """
@@ -80,7 +81,8 @@ class Api:
         self.patron_type = result["type"]
         return result
 
-    def get_replays(self, title: Optional[str] = None, player_name: Optional[str] = None, player_id: Optional[str] = None,
+    def get_replays(self, title: Optional[str] = None, player_name: Optional[str] = None,
+                    player_id: Optional[str] = None,
                     playlist: Optional[str] = None, season: Optional[int] = None, match_result: Optional[str] = None,
                     min_rank: Optional[str] = None, max_rank: Optional[str] = None, pro: Optional[bool] = None,
                     uploader: Optional[str] = None, group_id: Optional[str] = None,
@@ -118,18 +120,18 @@ class Api:
         :param sort_dir: sort direction
         :return: an iterator over the replays returned by the API.
         """
-        params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist, "season": season,
-                  "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank, "pro": pro,
-                  "uploader": uploader, "group": group_id, "created-before": created_before,
+        url = f"{self.base_url}/replays"
+        params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
+                  "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
+                  "pro": pro, "uploader": uploader, "group": group_id, "created-before": created_before,
                   "created-after": created_after, "replay-date-after": replay_after,
-                  "replay-date-before": replay_before,
-                  "sort-by": sort_by, "sort-dir": sort_dir}
+                  "replay-date-before": replay_before, "sort-by": sort_by, "sort-dir": sort_dir}
         n = 0
         left = count
         while left > 0:
             request_count = min(left, 200)
             params["count"] = request_count
-            d = self._request("/replays", self._session.get, params=params).json()
+            d = self._request(url, self._session.get, params=params).json()
 
             for replay in d["list"][:request_count]:
                 yield replay
@@ -301,6 +303,7 @@ class Api:
 if __name__ == '__main__':
     # Basic initial tests
     import sys
+
     token = sys.argv[1]
     api = Api(token)
     print(api)
