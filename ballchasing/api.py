@@ -1,7 +1,10 @@
 import time
-from typing import Optional, Iterator
+from typing import Optional, Iterator, Union
 
 from requests import sessions, Response
+
+from .enums import GroupSortBy, Playlist, TeamIdentification, SortDir, ReplaySortBy, PlayerIdentification, Rank, \
+    Visibility, MatchResult, Map
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -62,7 +65,7 @@ class Api:
                 if self.sleep_time_on_rate_limit:
                     time.sleep(self.sleep_time_on_rate_limit)
                 self.rate_limit_count += 1
-            elif r.status_code < 500:
+            else:
                 raise ValueError(r, r.json())
 
     def ping(self):
@@ -81,14 +84,27 @@ class Api:
         self.patron_type = result["type"]
         return result
 
-    def get_replays(self, title: Optional[str] = None, player_name: Optional[str] = None,
+    def get_replays(self, title: Optional[str] = None,
+                    player_name: Optional[str] = None,
                     player_id: Optional[str] = None,
-                    playlist: Optional[str] = None, season: Optional[int] = None, match_result: Optional[str] = None,
-                    min_rank: Optional[str] = None, max_rank: Optional[str] = None, pro: Optional[bool] = None,
-                    uploader: Optional[str] = None, group_id: Optional[str] = None,
-                    created_before: Optional[str] = None, created_after: Optional[str] = None,
-                    replay_after: Optional[str] = None, replay_before: Optional[str] = None, count: int = 200,
-                    sort_by: Optional[str] = None, sort_dir: str = "desc") -> Iterator[dict]:
+                    playlist: Optional[Union[str, Playlist]] = None,
+                    season: Optional[str] = None,
+                    match_result: Optional[Union[str, MatchResult]] = None,
+                    min_rank: Optional[Union[str, Rank]] = None,
+                    max_rank: Optional[Union[str, Rank]] = None,
+                    pro: Optional[bool] = None,
+                    uploader: Optional[str] = None,
+                    group_id: Optional[str] = None,
+                    map_id: Optional[Union[str, Map]] = None,
+                    created_before: Optional[str] = None,
+                    created_after: Optional[str] = None,
+                    replay_after: Optional[str] = None,
+                    replay_before: Optional[str] = None,
+                    count: int = 150,
+                    sort_by: Optional[Union[str, ReplaySortBy]] = None,
+                    sort_dir: Union[str, SortDir] = SortDir.DESCENDING,
+                    deep: bool = False
+                    ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
 
@@ -97,7 +113,8 @@ class Api:
         :param player_id: filter replays by a player’s platform id in the $platform:$id, e.g. steam:76561198141161044,
         ps4:gamertag, … You can filter replays by multiple player ids, e.g ?player-id=steam:1&player-id=steam:2
         :param playlist: filter replays by one or more playlists.
-        :param season: filter replays by season.
+        :param season: filter replays by season. Must be a number between 1 and 14 (for old seasons)
+                       or f1, f2, … for the new free to play seasons
         :param match_result: filter your replays by result.
         :param min_rank: filter your replays based on players minimum rank.
         :param max_rank: filter your replays based on players maximum rank.
@@ -106,6 +123,7 @@ class Api:
                          numerical 76*************44 steam id, or the special value 'me'
         :param group_id: only include replays belonging to the specified group. This only include replays immediately
                          under the specified group, but not replays in child groups
+        :param map_id: only include replays in the specified map. Check get_maps for the list of valid map codes
         :param created_before: only include replays created (uploaded) before some date.
                                RFC3339 format, e.g. '2020-01-02T15:00:05+01:00'
         :param created_after: only include replays created (uploaded) after some date.
@@ -118,30 +136,41 @@ class Api:
                       past the limit of 200 set by the API
         :param sort_by: sort replays according the selected field
         :param sort_dir: sort direction
+        :param deep: whether or not to get full stats for each replay (will be much slower).
         :return: an iterator over the replays returned by the API.
         """
+        playlist = Playlist.check(playlist)
+        match_result = MatchResult.check(match_result)
+        min_rank = Rank.check(min_rank)
+        max_rank = Rank.check(max_rank)
+        map_id = Map.check(map_id)
+        sort_by = ReplaySortBy.check(sort_by)
+        sort_dir = SortDir.check(sort_dir)
+
         url = f"{self.base_url}/replays"
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
-                  "pro": pro, "uploader": uploader, "group": group_id, "created-before": created_before,
+                  "pro": pro, "uploader": uploader, "group": group_id, "map": map_id, "created-before": created_before,
                   "created-after": created_after, "replay-date-after": replay_after,
                   "replay-date-before": replay_before, "sort-by": sort_by, "sort-dir": sort_dir}
-        n = 0
         left = count
         while left > 0:
             request_count = min(left, 200)
             params["count"] = request_count
             d = self._request(url, self._session.get, params=params).json()
 
-            for replay in d["list"][:request_count]:
-                yield replay
-                n += 1
-            if "next" in d and n < count:
-                url = d["next"]
-                left -= request_count
-                params = {}
+            batch = d["list"][:request_count]
+            if not deep:
+                yield from batch
             else:
+                yield from (self.get_replay(r["id"]) for r in batch)
+
+            if "next" not in d:
                 break
+
+            url = d["next"]
+            left -= len(batch)
+            params = {}
 
     def get_replay(self, replay_id: str) -> dict:
         """
@@ -161,7 +190,7 @@ class Api:
         """
         self._request(f"/replays/{replay_id}", self._session.patch, json=params)
 
-    def upload_replay(self, replay_file, visibility: Optional[str] = None) -> dict:
+    def upload_replay(self, replay_file, visibility: Optional[Union[str, Visibility]] = None) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
@@ -169,6 +198,7 @@ class Api:
         :param visibility: to set the visibility of the uploaded replay.
         :return: the result of the POST request.
         """
+        visibility = Visibility.check(visibility)
         return self._request(f"/v2/upload", self._session.post, files={"file": replay_file},
                              params={"visibility": visibility}).json()
 
@@ -181,9 +211,15 @@ class Api:
         """
         self._request(f"/replays/{replay_id}", self._session.delete)
 
-    def get_groups(self, name: Optional[str] = None, creator: Optional[str] = None, group: Optional[str] = None,
-                   created_before: Optional[str] = None, created_after: Optional[str] = None, count: int = 200,
-                   sort_by: str = "created", sort_dir: str = "desc") -> Iterator[dict]:
+    def get_groups(self, name: Optional[str] = None,
+                   creator: Optional[str] = None,
+                   group: Optional[str] = None,
+                   created_before: Optional[str] = None,
+                   created_after: Optional[str] = None,
+                   count: int = 200,
+                   sort_by: Union[str, GroupSortBy] = GroupSortBy.CREATED,
+                   sort_dir: Union[str, SortDir] = SortDir.DESCENDING
+                   ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replay groups.
 
@@ -201,28 +237,35 @@ class Api:
         :param sort_dir: Sort direction.
         :return: an iterator over the groups returned by the API.
         """
+        sort_by = GroupSortBy.check(sort_by)
+        sort_dir = SortDir.check(sort_dir)
+
         url = f"{self.base_url}/groups/"
         params = {"name": name, "creator": creator, "group": group, "created-before": created_before,
                   "created-after": created_after, "sort-by": sort_by, "sort-dir": sort_dir}
-        n = 0
+
         left = count
         while left > 0:
             request_count = min(left, 200)
             params["count"] = request_count
             d = self._request(url, self._session.get, params=params).json()
 
-            for group in d["list"][:request_count]:
-                yield group
-                n += 1
-            if "next" in d and n < count:
-                url = d["next"]
-                left -= request_count
-                params = {}
-            else:
+            batch = d["list"][:request_count]
+            yield from batch
+
+            if "next" not in d:
                 break
 
-    def create_group(self, name: str, player_identification: str, team_identification: str,
-                     parent: Optional[str] = None) -> dict:
+            url = d["next"]
+            left -= len(batch)
+            params = {}
+
+    def create_group(self,
+                     name: str,
+                     player_identification: Union[str, PlayerIdentification],
+                     team_identification: Union[str, TeamIdentification],
+                     parent: Optional[str] = None
+                     ) -> dict:
         """
         Use this API to create a new replay group.
 
@@ -238,6 +281,9 @@ class Api:
         :param parent: if set,the new group will be created as a child of the specified group
         :return: the result of the POST request.
         """
+        player_identification = PlayerIdentification.check(player_identification)
+        team_identification = TeamIdentification.check(team_identification)
+
         json = {"name": name, "player_identification": player_identification,
                 "team_identification": team_identification, "parent": parent}
         return self._request(f"/groups", self._session.post, json=json).json()
@@ -269,18 +315,19 @@ class Api:
         """
         self._request(f"/groups/{group_id}", self._session.delete)
 
-    def get_group_replays(self, group_id: str) -> Iterator[dict]:
+    def get_group_replays(self, group_id: str, deep: bool = False) -> Iterator[dict]:
         """
         Finds all replays in a group, including child groups.
 
         :param group_id: the base group id.
+        :param deep: whether or not to get full stats for each replay (will be much slower).
         :return: an iterator over all the replays in the group.
         """
         child_groups = self.get_groups(group=group_id)
         for child in child_groups:
             for replay in self.get_group_replays(child["id"]):
                 yield replay
-        for replay in self.get_replays(group_id=group_id):
+        for replay in self.get_replays(group_id=group_id, deep=deep):
             yield replay
 
     def download_replay(self, replay_id: str, folder: str):
@@ -294,6 +341,18 @@ class Api:
         with open(f"{folder}/{replay_id}.replay", "wb") as f:
             for ch in r:
                 f.write(ch)
+
+    def get_maps(self):
+        """
+        Use this API to get the list of map codes to map names (map as in stadium).
+        """
+        res = self._request("/maps", self._session.get).json()
+        for m in res.keys():
+            try:
+                Map.check(m)
+            except ValueError:
+                print(f"{m} is not a registered Map, please notify the author")
+        return res
 
     def __str__(self):
         return f"BallchasingApi[key={self.auth_key},name={self.steam_name}," \
