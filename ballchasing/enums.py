@@ -1,4 +1,3 @@
-import warnings
 from enum import Enum
 
 
@@ -18,6 +17,7 @@ class Playlist(_Checkable, Enum):
     PRIVATE = "private"
     SEASON = "season"
     OFFLINE = "offline"
+    LOCAL_LOBBY = "local-lobby"
     RANKED_DUELS = "ranked-duels"
     RANKED_DOUBLES = "ranked-doubles"
     RANKED_SOLO_STANDARD = "ranked-solo-standard"
@@ -34,6 +34,7 @@ class Playlist(_Checkable, Enum):
     RANKED_SNOWDAY = "ranked-snowday"
     DROPSHOT_RUMBLE = "dropshot-rumble"
     HEATSEEKER = "heatseeker"
+    GRIDIRON = "gridiron"
 
 
 class Rank(_Checkable, Enum):
@@ -60,6 +61,26 @@ class Rank(_Checkable, Enum):
     GRAND_CHAMPION_2 = "grand-champion-2"
     GRAND_CHAMPION_3 = "grand-champion-3"
     SUPERSONIC_LEGEND = "supersonic-legend"
+
+
+class Season(_Checkable, Enum):
+    SEASON_1 = "1"
+    SEASON_2 = "2"
+    SEASON_3 = "3"
+    SEASON_4 = "4"
+    SEASON_5 = "5"
+    SEASON_6 = "6"
+    SEASON_7 = "7"
+    SEASON_8 = "8"
+    SEASON_9 = "9"
+    SEASON_10 = "10"
+    SEASON_11 = "11"
+    SEASON_12 = "12"
+    SEASON_13 = "13"
+    SEASON_14 = "14"
+    SEASON_1_FTP = "f1"
+    SEASON_2_FTP = "f2"
+    SEASON_3_FTP = "f3"
 
 
 class MatchResult(_Checkable, Enum):
@@ -139,6 +160,7 @@ class Map(_Checkable, Enum):
     STADIUM_DAY_P = "stadium_day_p", "DFH Stadium (Day)"
     STADIUM_FOGGY_P = "stadium_foggy_p", "DFH Stadium (Stormy)"
     STADIUM_P = "stadium_p", "DFH Stadium"
+    STADIUM_RACE_DAY_P = "stadium_race_day_p", "DFH Stadium (Circuit)"
     STADIUM_WINTER_P = "stadium_winter_p", "DFH Stadium (Snowy)"
     THROWBACKSTADIUM_P = "throwbackstadium_p", "Throwback Stadium"
     TRAINSTATION_DAWN_P = "trainstation_dawn_p", "Urban Central (Dawn)"

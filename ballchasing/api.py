@@ -4,7 +4,7 @@ from typing import Optional, Iterator, Union
 from requests import sessions, Response
 
 from .enums import GroupSortBy, Playlist, TeamIdentification, SortDir, ReplaySortBy, PlayerIdentification, Rank, \
-    Visibility, MatchResult, Map
+    Visibility, MatchResult, Map, Season
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -88,7 +88,7 @@ class Api:
                     player_name: Optional[str] = None,
                     player_id: Optional[str] = None,
                     playlist: Optional[Union[str, Playlist]] = None,
-                    season: Optional[str] = None,
+                    season: Optional[Union[str, Season]] = None,
                     match_result: Optional[Union[str, MatchResult]] = None,
                     min_rank: Optional[Union[str, Rank]] = None,
                     max_rank: Optional[Union[str, Rank]] = None,
@@ -140,6 +140,7 @@ class Api:
         :return: an iterator over the replays returned by the API.
         """
         playlist = Playlist.check(playlist)
+        season = Season.check(season)
         match_result = MatchResult.check(match_result)
         min_rank = Rank.check(min_rank)
         max_rank = Rank.check(max_rank)
