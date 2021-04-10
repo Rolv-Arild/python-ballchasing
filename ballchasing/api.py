@@ -355,6 +355,51 @@ class Api:
                 print(f"{m} is not a registered Map, please notify the author")
         return res
 
+    def generate_tsvs(self, replays: Iterator[Union[dict, str]],
+                      path_name: str,
+                      player_suffix: Optional[str] = "-players.tsv",
+                      team_suffix: Optional[str] = "-teams.tsv",
+                      replay_suffix: Optional[str] = "-replays.tsv",
+                      sep="\t",
+                      ):
+        """
+        Generates tsv files for players, teams and replay info.
+
+        :param replays: an iterator over either replays (with stats) or replay ids.
+        :param path_name: the path to save the files at, including the name prefix.
+        :param player_suffix: suffix for the player file. Set to None to disable player file writing.
+        :param team_suffix: suffix for the team file. Set to None to disable team file writing.
+        :param replay_suffix: suffix for the replay file. Set to None to disable replay file writing.
+        :param sep: the separator to use. Default is tab character (tsv).
+        """
+        from .util import replay_cols, team_cols, player_cols, parse_replay
+        player_file = None
+        if player_suffix is not None:
+            player_file = open(path_name + player_suffix, "w")
+            player_file.write(sep.join(player_cols) + "\n")
+
+        team_file = None
+        if team_suffix is not None:
+            team_file = open(path_name + team_suffix, "w")
+            team_file.write(sep.join(team_cols) + "\n")
+
+        replay_file = None
+        if replay_suffix is not None:
+            replay_file = open(path_name + replay_suffix, "w")
+            replay_file.write(sep.join(replay_cols) + "\n")
+
+        for replay in replays:
+            if isinstance(replay, str):
+                replay = self.get_replay(replay)
+            for kind, values in parse_replay(replay):
+                values = [str(v) for v in values]
+                if kind == "replay" and replay_file is not None:
+                    replay_file.write(sep.join(values) + "\n")
+                elif kind == "team" and team_file is not None:
+                    team_file.write(sep.join(values) + "\n")
+                elif kind == "player" and player_file is not None:
+                    player_file.write(sep.join(values) + "\n")
+
     def __str__(self):
         return f"BallchasingApi[key={self.auth_key},name={self.steam_name}," \
                f"steam_id={self.steam_id},type={self.patron_type}]"
