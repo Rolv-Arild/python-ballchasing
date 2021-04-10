@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='python-ballchasing',
-    version='0.1.8',
+    version='0.1.10',
     author="Rolv-Arild Braaten",
     author_email="rolv_arild@hotmail.com",
     description="Python wrapper for the ballchasing.com API",
@@ -13,6 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Rolv-Arild/python-ballchasing",
     packages=setuptools.find_packages(),
+    package_data={'ballchasing': ['*.tsv']},
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
