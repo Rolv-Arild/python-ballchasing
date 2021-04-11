@@ -12,6 +12,12 @@ class Playlist:
            RANKED_DUELS, RANKED_DOUBLES, RANKED_SOLO_STANDARD, RANKED_STANDARD, SNOWDAY, ROCKETLABS, HOOPS, RUMBLE,
            TOURNAMENT, DROPSHOT, RANKED_HOOPS, RANKED_RUMBLE, RANKED_DROPSHOT, RANKED_SNOWDAY, DROPSHOT_RUMBLE,
            HEATSEEKER, GRIDIRON) = get_args(AnyPlaylist)
+    LEGACY = (SNOWDAY, HOOPS, RUMBLE, DROPSHOT, RANKED_SOLO_STANDARD, ROCKETLABS)
+    UNRANKED = (UNRANKED_DUELS, UNRANKED_DOUBLES, UNRANKED_STANDARD, UNRANKED_CHAOS)
+    RANKED = (RANKED_DUELS, RANKED_DOUBLES, RANKED_STANDARD)
+    LIMITED = (GRIDIRON, HEATSEEKER, DROPSHOT_RUMBLE)
+    EXTRA_MODES = (RANKED_HOOPS, RANKED_RUMBLE, RANKED_DROPSHOT, RANKED_SNOWDAY)
+    MISC = (PRIVATE, SEASON, OFFLINE, LOCAL_LOBBY, TOURNAMENT)
 
 
 AnyRank = Literal["unranked", "bronze-1", "bronze-2", "bronze-3", "silver-1", "silver-2", "silver-3", "gold-1",
@@ -24,15 +30,24 @@ class Rank:
     ALL = (UNRANKED, BRONZE_1, BRONZE_2, BRONZE_3, SILVER_1, SILVER_2, SILVER_3, GOLD_1, GOLD_2, GOLD_3, PLATINUM_1,
            PLATINUM_2, PLATINUM_3, DIAMOND_1, DIAMOND_2, DIAMOND_3, CHAMPION_1, CHAMPION_2, CHAMPION_3,
            GRAND_CHAMPION_1, GRAND_CHAMPION_2, GRAND_CHAMPION_3, SUPERSONIC_LEGEND) = get_args(AnyRank)
+    BRONZE = (BRONZE_1, BRONZE_2, BRONZE_3)
+    SILVER = (SILVER_1, SILVER_2, SILVER_3)
+    GOLD = (GOLD_1, GOLD_2, GOLD_3)
+    PLATINUM = (PLATINUM_1, PLATINUM_2, PLATINUM_3)
+    DIAMOND = (DIAMOND_1, DIAMOND_2, DIAMOND_3)
+    CHAMPION = (CHAMPION_1, CHAMPION_2, CHAMPION_3)
+    GRAND_CHAMPION = (GRAND_CHAMPION_1, GRAND_CHAMPION_2, GRAND_CHAMPION_3)
 
 
 AnySeason = Literal["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "f1", "f2", "f3"]
 
 
 class Season:
-    ALL = (
-        SEASON_1, SEASON_2, SEASON_3, SEASON_4, SEASON_5, SEASON_6, SEASON_7, SEASON_8, SEASON_9, SEASON_10, SEASON_11,
-        SEASON_12, SEASON_13, SEASON_14, SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP) = get_args(AnySeason)
+    ALL = (SEASON_1, SEASON_2, SEASON_3, SEASON_4, SEASON_5, SEASON_6, SEASON_7, SEASON_8, SEASON_9, SEASON_10,
+           SEASON_11, SEASON_12, SEASON_13, SEASON_14, SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP) = get_args(AnySeason)
+    PAY_TO_PLAY = (SEASON_1, SEASON_2, SEASON_3, SEASON_4, SEASON_5, SEASON_6, SEASON_7, SEASON_8, SEASON_9, SEASON_10,
+                   SEASON_11, SEASON_12, SEASON_13, SEASON_14)
+    FREE_TO_PLAY = (SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP)
 
 
 AnyMatchResult = Literal["win", "loss"]
@@ -107,3 +122,27 @@ class Map:
            STADIUM_WINTER_P, THROWBACKSTADIUM_P, TRAINSTATION_DAWN_P, TRAINSTATION_NIGHT_P, TRAINSTATION_P,
            UNDERWATER_P, UTOPIASTADIUM_DUSK_P, UTOPIASTADIUM_P, UTOPIASTADIUM_SNOW_P, WASTELAND_NIGHT_P,
            WASTELAND_NIGHT_S_P, WASTELAND_P, WASTELAND_S_P) = get_args(AnyMap)
+    NAMES = dict(zip(ALL, ("Starbase ARC", "Starbase ARC (Standard)", "Champions Field (NFL)", "Salty Shores (Night)",
+                           "Salty Shores", "Salty Shores (Volley)", "Forbidden Temple (Day)", "Forbidden Temple",
+                           "Champions Field (Day)", "Rivals Arena", "Champions Field", "Mannfield (Night)", "Mannfield",
+                           "Mannfield (Stormy)", "Mannfield (Snowy)", "Farmstead (Night)", "Farmstead",
+                           "Farmstead (The Upside Down)", "Urban Central (Haunted)", "Dunk House", "Pillars", "Cosmic",
+                           "Cosmic", "Double Goal", "Double Goal", "Octagon", "Octagon", "Underpass", "Underpass",
+                           "Utopia Retro", "Neon Fields", "Neo Tokyo", "Neo Tokyo (Standard)",
+                           "Beckwith Park (Midnight)", "Beckwith Park", "Beckwith Park (Stormy)", "Core 707",
+                           "DFH Stadium (Day)", "DFH Stadium (Stormy)", "DFH Stadium", "DFH Stadium (Circuit)",
+                           "DFH Stadium (Snowy)", "Throwback Stadium", "Urban Central (Dawn)", "Urban Central (Night)",
+                           "Urban Central", "Aquadome", "Utopia Coliseum (Dusk)", "Utopia Coliseum",
+                           "Utopia Coliseum (Snowy)", "Wasteland (Night)", "Wasteland (Standard, Night)", "Wasteland",
+                           "Wasteland (Standard)")))
+    STANDARD_MAPS = (BEACH_NIGHT_P, CHN_STADIUM_P, CS_DAY_P, CS_P, EUROSTADIUM_NIGHT_P, EUROSTADIUM_P,
+                     EUROSTADIUM_RAINY_P, EUROSTADIUM_SNOWNIGHT_P, FARM_P, MUSIC_P, NEOTOKYO_STANDARD_P, PARK_NIGHT_P,
+                     PARK_P, PARK_RAINY_P, STADIUM_DAY_P, STADIUM_FOGGY_P, STADIUM_P, TRAINSTATION_DAWN_P,
+                     TRAINSTATION_NIGHT_P, TRAINSTATION_P, UNDERWATER_P, UTOPIASTADIUM_DUSK_P, UTOPIASTADIUM_P,
+                     WASTELAND_NIGHT_S_P, WASTELAND_S_P)
+    NON_STANDARD_MAPS = (ARC_P, ARC_STANDARD_P, BB_P, BEACH_P, BEACHVOLLEY, CHN_STADIUM_DAY_P, CS_HW_P, FARM_NIGHT_P,
+                         FARM_UPSIDEDOWN_P, HAUNTED_TRAINSTATION_P, HOOPSSTADIUM_P, LABS_CIRCLEPILLARS_P, LABS_COSMIC_P,
+                         LABS_COSMIC_V4_P, LABS_DOUBLEGOAL_P, LABS_DOUBLEGOAL_V2_P, LABS_OCTAGON_02_P, LABS_OCTAGON_P,
+                         LABS_UNDERPASS_P, LABS_UNDERPASS_V0_P, LABS_UTOPIA_P, NEOTOKYO_P, SHATTERSHOT_P,
+                         STADIUM_RACE_DAY_P, STADIUM_WINTER_P, THROWBACKSTADIUM_P, UTOPIASTADIUM_SNOW_P,
+                         WASTELAND_NIGHT_P, WASTELAND_P)
