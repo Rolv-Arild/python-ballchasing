@@ -1,4 +1,4 @@
-from typing import Literal, Union, Sequence, get_args
+from typing import Literal, get_args
 
 AnyPlaylist = Literal["unranked-duels", "unranked-doubles", "unranked-standard", "unranked-chaos", "private", "season",
                       "offline", "local-lobby", "ranked-duels", "ranked-doubles", "ranked-solo-standard",

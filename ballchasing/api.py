@@ -1,10 +1,9 @@
 import time
-from typing import Optional, Iterator, Union, Literal, Sequence, List
+from typing import Optional, Iterator, Union, List
 
 from requests import sessions, Response
 
-from .constants import GroupSortBy, Playlist, TeamIdentification, SortDir, ReplaySortBy, PlayerIdentification, Rank, \
-    Visibility, MatchResult, Map, Season, AnyPlaylist, SingleOrMultiple, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
+from .constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification
 
 DEFAULT_URL = "https://ballchasing.com/api"
