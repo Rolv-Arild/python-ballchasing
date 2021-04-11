@@ -1,10 +1,11 @@
 import time
-from typing import Optional, Iterator, Union
+from typing import Optional, Iterator, Union, Literal, Sequence, List
 
 from requests import sessions, Response
 
-from .enums import GroupSortBy, Playlist, TeamIdentification, SortDir, ReplaySortBy, PlayerIdentification, Rank, \
-    Visibility, MatchResult, Map, Season
+from .constants import GroupSortBy, Playlist, TeamIdentification, SortDir, ReplaySortBy, PlayerIdentification, Rank, \
+    Visibility, MatchResult, Map, Season, AnyPlaylist, SingleOrMultiple, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
+    AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -85,24 +86,24 @@ class Api:
         return result
 
     def get_replays(self, title: Optional[str] = None,
-                    player_name: Optional[str] = None,
-                    player_id: Optional[str] = None,
-                    playlist: Optional[Union[str, Playlist]] = None,
-                    season: Optional[Union[str, Season]] = None,
-                    match_result: Optional[Union[str, MatchResult]] = None,
-                    min_rank: Optional[Union[str, Rank]] = None,
-                    max_rank: Optional[Union[str, Rank]] = None,
+                    player_name: Optional[Union[str, List[str]]] = None,
+                    player_id: Optional[Union[str, List[str]]] = None,
+                    playlist: Optional[Union[AnyPlaylist, List[AnyPlaylist]]] = None,
+                    season: Optional[Union[AnySeason, List[AnySeason]]] = None,
+                    match_result: Optional[Union[str, List[str]]] = None,
+                    min_rank: Optional[AnyRank] = None,
+                    max_rank: Optional[AnyRank] = None,
                     pro: Optional[bool] = None,
                     uploader: Optional[str] = None,
-                    group_id: Optional[str] = None,
-                    map_id: Optional[Union[str, Map]] = None,
+                    group_id: Optional[Union[str, List[str]]] = None,
+                    map_id: Optional[Union[AnyMap, List[AnyMap]]] = None,
                     created_before: Optional[str] = None,
                     created_after: Optional[str] = None,
                     replay_after: Optional[str] = None,
                     replay_before: Optional[str] = None,
                     count: int = 150,
-                    sort_by: Optional[Union[str, ReplaySortBy]] = None,
-                    sort_dir: Union[str, SortDir] = SortDir.DESCENDING,
+                    sort_by: Optional[AnyReplaySortBy] = None,
+                    sort_dir: Union[AnySortDir] = SortDir.DESCENDING,
                     deep: bool = False
                     ) -> Iterator[dict]:
         """
@@ -139,15 +140,6 @@ class Api:
         :param deep: whether or not to get full stats for each replay (will be much slower).
         :return: an iterator over the replays returned by the API.
         """
-        playlist = Playlist.check(playlist)
-        season = Season.check(season)
-        match_result = MatchResult.check(match_result)
-        min_rank = Rank.check(min_rank)
-        max_rank = Rank.check(max_rank)
-        map_id = Map.check(map_id)
-        sort_by = ReplaySortBy.check(sort_by)
-        sort_dir = SortDir.check(sort_dir)
-
         url = f"{self.base_url}/replays"
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
@@ -191,7 +183,7 @@ class Api:
         """
         self._request(f"/replays/{replay_id}", self._session.patch, json=params)
 
-    def upload_replay(self, replay_file, visibility: Optional[Union[str, Visibility]] = None) -> dict:
+    def upload_replay(self, replay_file, visibility: Optional[AnyVisibility] = None) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
@@ -199,7 +191,6 @@ class Api:
         :param visibility: to set the visibility of the uploaded replay.
         :return: the result of the POST request.
         """
-        visibility = Visibility.check(visibility)
         return self._request(f"/v2/upload", self._session.post, files={"file": replay_file},
                              params={"visibility": visibility}).json()
 
@@ -218,8 +209,8 @@ class Api:
                    created_before: Optional[str] = None,
                    created_after: Optional[str] = None,
                    count: int = 200,
-                   sort_by: Union[str, GroupSortBy] = GroupSortBy.CREATED,
-                   sort_dir: Union[str, SortDir] = SortDir.DESCENDING
+                   sort_by: Union[AnyGroupSortBy] = GroupSortBy.CREATED,
+                   sort_dir: Union[AnySortDir] = SortDir.DESCENDING
                    ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replay groups.
@@ -238,9 +229,6 @@ class Api:
         :param sort_dir: Sort direction.
         :return: an iterator over the groups returned by the API.
         """
-        sort_by = GroupSortBy.check(sort_by)
-        sort_dir = SortDir.check(sort_dir)
-
         url = f"{self.base_url}/groups/"
         params = {"name": name, "creator": creator, "group": group, "created-before": created_before,
                   "created-after": created_after, "sort-by": sort_by, "sort-dir": sort_dir}
@@ -263,8 +251,8 @@ class Api:
 
     def create_group(self,
                      name: str,
-                     player_identification: Union[str, PlayerIdentification],
-                     team_identification: Union[str, TeamIdentification],
+                     player_identification: Union[AnyPlayerIdentification],
+                     team_identification: Union[AnyTeamIdentification],
                      parent: Optional[str] = None
                      ) -> dict:
         """
@@ -282,9 +270,6 @@ class Api:
         :param parent: if set,the new group will be created as a child of the specified group
         :return: the result of the POST request.
         """
-        player_identification = PlayerIdentification.check(player_identification)
-        team_identification = TeamIdentification.check(team_identification)
-
         json = {"name": name, "player_identification": player_identification,
                 "team_identification": team_identification, "parent": parent}
         return self._request(f"/groups", self._session.post, json=json).json()
@@ -348,11 +333,6 @@ class Api:
         Use this API to get the list of map codes to map names (map as in stadium).
         """
         res = self._request("/maps", self._session.get).json()
-        for m in res.keys():
-            try:
-                Map.check(m)
-            except ValueError:
-                print(f"{m} is not a registered Map, please notify the author")
         return res
 
     def generate_tsvs(self, replays: Iterator[Union[dict, str]],
@@ -412,6 +392,7 @@ if __name__ == '__main__':
     token = sys.argv[1]
     api = Api(token)
     print(api)
+    # api.get_replays(season="123")
     # api.delete_replay("a22a8c81-fadd-4453-914e-ae54c2b8391f")
     upload_response = api.upload_replay(open("4E2B22344F748C6EB4922DB8CC8AC282.replay", "rb"))
     replays_response = api.get_replays()
