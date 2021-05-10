@@ -34,5 +34,16 @@ __download_url__ = 'https://pypi.python.org/pypi/python-ballchasing'
 __description__  = 'A Python wrapper around the Ballchasing API'
 
 from .api import Api                        # noqa
-from .constants import Playlist, Rank, Season, MatchResult, ReplaySortBy, GroupSortBy, SortDir, Visibility, \
-    PlayerIdentification, TeamIdentification, Map
+from .constants import (                    # noqa
+    Playlist,
+    Rank,
+    Season,
+    MatchResult,
+    ReplaySortBy,
+    GroupSortBy,
+    SortDir,
+    Visibility,
+    PlayerIdentification,
+    TeamIdentification,
+    Map
+)

@@ -1,9 +1,10 @@
+import os
 import time
 from typing import Optional, Iterator, Union, List
 
 from requests import sessions, Response
 
-from .constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
+from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification
 
 DEFAULT_URL = "https://ballchasing.com/api"
@@ -326,6 +327,25 @@ class Api:
         with open(f"{folder}/{replay_id}.replay", "wb") as f:
             for ch in r:
                 f.write(ch)
+
+    def download_group(self, group_id: str, folder: str, recursive=True):
+        """
+        Download an entire group.
+
+        :param group_id: the base group id.
+        :param folder: the folder in which to create the group folder.
+        :param recursive: whether or not to create new folders for child groups.
+        """
+        folder = os.path.join(folder, group_id)
+        if recursive:
+            os.makedirs(folder, exist_ok=True)
+            for child_group in self.get_groups(group=group_id):
+                self.download_group(child_group["id"], folder, True)
+            for replay in self.get_replays(group_id=group_id):
+                self.download_replay(replay["id"], folder)
+        else:
+            for replay in self.get_group_replays(group_id):
+                self.download_replay(replay["id"], folder)
 
     def get_maps(self):
         """
