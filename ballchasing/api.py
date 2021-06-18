@@ -311,7 +311,7 @@ class Api:
         """
         child_groups = self.get_groups(group=group_id)
         for child in child_groups:
-            for replay in self.get_group_replays(child["id"]):
+            for replay in self.get_group_replays(child["id"], deep):
                 yield replay
         for replay in self.get_replays(group_id=group_id, deep=deep):
             yield replay
