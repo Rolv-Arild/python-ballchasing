@@ -1,11 +1,9 @@
 import setuptools
+
 from ballchasing import __version__, __author__, __email__, __description__, __url__, __download_url__
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
-
-with open("requirements.txt", "r") as req:
-    requirements = req.read().split("\n")
 
 setuptools.setup(
     name='python-ballchasing',
@@ -17,7 +15,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url=__url__,
     download_url=__download_url__,
-    requires=requirements,
+    install_requires=["requests"],
     packages=setuptools.find_packages(),
     package_data={'ballchasing': ['*.tsv']},
     classifiers=[
