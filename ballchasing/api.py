@@ -1,11 +1,13 @@
 import os
 import time
+from datetime import datetime
 from typing import Optional, Iterator, Union, List
 
 from requests import sessions, Response
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification
+from .util import rfc3339, replay_cols, team_cols, player_cols, parse_replay
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -97,10 +99,10 @@ class Api:
                     uploader: Optional[str] = None,
                     group_id: Optional[Union[str, List[str]]] = None,
                     map_id: Optional[Union[AnyMap, List[AnyMap]]] = None,
-                    created_before: Optional[str] = None,
-                    created_after: Optional[str] = None,
-                    replay_after: Optional[str] = None,
-                    replay_before: Optional[str] = None,
+                    created_before: Optional[Union[str, datetime]] = None,
+                    created_after: Optional[Union[str, datetime]] = None,
+                    replay_after: Optional[Union[str, datetime]] = None,
+                    replay_before: Optional[Union[str, datetime]] = None,
                     count: int = 150,
                     sort_by: Optional[AnyReplaySortBy] = None,
                     sort_dir: Union[AnySortDir] = SortDir.DESCENDING,
@@ -143,9 +145,10 @@ class Api:
         url = f"{self.base_url}/replays"
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
-                  "pro": pro, "uploader": uploader, "group": group_id, "map": map_id, "created-before": created_before,
-                  "created-after": created_after, "replay-date-after": replay_after,
-                  "replay-date-before": replay_before, "sort-by": sort_by, "sort-dir": sort_dir}
+                  "pro": pro, "uploader": uploader, "group": group_id, "map": map_id,
+                  "created-before": rfc3339(created_before), "created-after": rfc3339(created_after),
+                  "replay-date-after": rfc3339(replay_after), "replay-date-before": rfc3339(replay_before),
+                  "sort-by": sort_by, "sort-dir": sort_dir}
         left = count
         while left > 0:
             request_count = min(left, 200)
@@ -206,8 +209,8 @@ class Api:
     def get_groups(self, name: Optional[str] = None,
                    creator: Optional[str] = None,
                    group: Optional[str] = None,
-                   created_before: Optional[str] = None,
-                   created_after: Optional[str] = None,
+                   created_before: Optional[Union[str, datetime]] = None,
+                   created_after: Optional[Union[str, datetime]] = None,
                    count: int = 200,
                    sort_by: Union[AnyGroupSortBy] = GroupSortBy.CREATED,
                    sort_dir: Union[AnySortDir] = SortDir.DESCENDING
@@ -230,8 +233,8 @@ class Api:
         :return: an iterator over the groups returned by the API.
         """
         url = f"{self.base_url}/groups/"
-        params = {"name": name, "creator": creator, "group": group, "created-before": created_before,
-                  "created-after": created_after, "sort-by": sort_by, "sort-dir": sort_dir}
+        params = {"name": name, "creator": creator, "group": group, "created-before": rfc3339(created_before),
+                  "created-after": rfc3339(created_after), "sort-by": sort_by, "sort-dir": sort_dir}
 
         left = count
         while left > 0:
@@ -371,7 +374,6 @@ class Api:
         :param replay_suffix: suffix for the replay file. Set to None to disable replay file writing.
         :param sep: the separator to use. Default is tab character (tsv).
         """
-        from .util import replay_cols, team_cols, player_cols, parse_replay
         player_file = None
         if player_suffix is not None:
             player_file = open(path_name + player_suffix, "w")

@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 stats_info = open(Path(__file__).parent / "stats_info.tsv")
@@ -59,3 +60,14 @@ def parse_replay(replay: dict):
     yield "replay", replay_stats
     yield from (("team", ts) for ts in team_stats)
     yield from (("player", ps) for ps in player_stats)
+
+
+def rfc3339(dt):
+    if dt is None:
+        return dt
+    elif isinstance(dt, str):
+        return dt
+    elif isinstance(dt, datetime):
+        return dt.isoformat("T") + "Z"
+    else:
+        raise ValueError("Date must be either string or datetime")

@@ -25,10 +25,10 @@
 from __future__ import absolute_import
 
 __author__       = 'Rolv-Arild Braaten'
-# __email__        = ''
+__email__        = 'rolv_arild@hotmail.com'
 __copyright__    = 'Copyright (c) 2020 Rolv-Arild Braaten'
 __license__      = 'Apache License 2.0'
-__version__      = '0.1.14'
+__version__      = '0.1.15'
 __url__          = 'https://github.com/Rolv-Arild/python-ballchasing'
 __download_url__ = 'https://pypi.python.org/pypi/python-ballchasing'
 __description__  = 'A Python wrapper around the Ballchasing API'
