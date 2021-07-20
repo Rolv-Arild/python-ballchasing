@@ -6,7 +6,7 @@ from typing import Optional, Iterator, Union, List
 from requests import sessions, Response
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
-    AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification
+    AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult
 from .util import rfc3339, replay_cols, team_cols, player_cols, parse_replay
 
 DEFAULT_URL = "https://ballchasing.com/api"
@@ -92,7 +92,7 @@ class Api:
                     player_id: Optional[Union[str, List[str]]] = None,
                     playlist: Optional[Union[AnyPlaylist, List[AnyPlaylist]]] = None,
                     season: Optional[Union[AnySeason, List[AnySeason]]] = None,
-                    match_result: Optional[Union[str, List[str]]] = None,
+                    match_result: Optional[Union[AnyMatchResult, List[AnyMatchResult]]] = None,
                     min_rank: Optional[AnyRank] = None,
                     max_rank: Optional[AnyRank] = None,
                     pro: Optional[bool] = None,
