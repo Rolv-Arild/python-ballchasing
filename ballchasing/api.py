@@ -58,8 +58,18 @@ class Api:
         """
         headers = {"Authorization": self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
+        retries = 0
         while True:
-            r = method(url, headers=headers, **params)
+            try:
+                r = method(url, headers=headers, **params)
+                retries = 0
+            except ConnectionError as e:
+                print("Connection error, trying again in 10 seconds...")
+                time.sleep(10)
+                retries += 1
+                if retries >= 10:
+                    raise e
+                continue
             if 200 <= r.status_code < 300:
                 return r
             elif r.status_code == 429:
