@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from typing import Optional, Iterator, Union, List
 
-from requests import sessions, Response
+from requests import sessions, Response, ConnectionError
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult
