@@ -39,15 +39,19 @@ class Rank:
     GRAND_CHAMPION = (GRAND_CHAMPION_1, GRAND_CHAMPION_2, GRAND_CHAMPION_3)
 
 
-AnySeason = Literal["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "f1", "f2", "f3"]
+AnySeason = Literal[
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+    "f1", "f2", "f3", "f4", "f5"
+]
 
 
 class Season:
     ALL = (SEASON_1, SEASON_2, SEASON_3, SEASON_4, SEASON_5, SEASON_6, SEASON_7, SEASON_8, SEASON_9, SEASON_10,
-           SEASON_11, SEASON_12, SEASON_13, SEASON_14, SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP) = get_args(AnySeason)
+           SEASON_11, SEASON_12, SEASON_13, SEASON_14, SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP, SEASON_4_FTP,
+           SEASON_5_FTP) = get_args(AnySeason)
     PAY_TO_PLAY = (SEASON_1, SEASON_2, SEASON_3, SEASON_4, SEASON_5, SEASON_6, SEASON_7, SEASON_8, SEASON_9, SEASON_10,
                    SEASON_11, SEASON_12, SEASON_13, SEASON_14)
-    FREE_TO_PLAY = (SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP)
+    FREE_TO_PLAY = (SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP, SEASON_4_FTP, SEASON_5_FTP)
 
 
 AnyMatchResult = Literal["win", "loss"]
@@ -99,7 +103,7 @@ class TeamIdentification:
     BY_DISTINCT_PLAYERS, BY_PLAYER_CLUSTERS = get_args(AnyTeamIdentification)
 
 
-AnyMap = Literal["arc_p", "arc_standard_p", "bb_p", "beach_night_p", "beach_p", "beachvolley", "chn_stadium_day_p",
+AnyMap = Literal["arc_p", "arc_darc_p", "arc_standard_p", "bb_p", "beach_night_p", "beach_p", "beachvolley", "chn_stadium_day_p",
                  "chn_stadium_p", "cs_day_p", "cs_hw_p", "cs_p", "eurostadium_night_p", "eurostadium_p",
                  "eurostadium_rainy_p", "eurostadium_snownight_p", "farm_night_p", "farm_p", "farm_upsidedown_p",
                  "haunted_trainstation_p", "hoopsstadium_p", "labs_circlepillars_p", "labs_cosmic_p",
@@ -113,7 +117,7 @@ AnyMap = Literal["arc_p", "arc_standard_p", "bb_p", "beach_night_p", "beach_p", 
 
 
 class Map:
-    ALL = (ARC_P, ARC_STANDARD_P, BB_P, BEACH_NIGHT_P, BEACH_P, BEACHVOLLEY, CHN_STADIUM_DAY_P, CHN_STADIUM_P, CS_DAY_P,
+    ALL = (ARC_P, ARC_DARC_P, ARC_STANDARD_P, BB_P, BEACH_NIGHT_P, BEACH_P, BEACHVOLLEY, CHN_STADIUM_DAY_P, CHN_STADIUM_P, CS_DAY_P,
            CS_HW_P, CS_P, EUROSTADIUM_NIGHT_P, EUROSTADIUM_P, EUROSTADIUM_RAINY_P, EUROSTADIUM_SNOWNIGHT_P,
            FARM_NIGHT_P, FARM_P, FARM_UPSIDEDOWN_P, HAUNTED_TRAINSTATION_P, HOOPSSTADIUM_P, LABS_CIRCLEPILLARS_P,
            LABS_COSMIC_P, LABS_COSMIC_V4_P, LABS_DOUBLEGOAL_P, LABS_DOUBLEGOAL_V2_P, LABS_OCTAGON_02_P, LABS_OCTAGON_P,
@@ -122,7 +126,7 @@ class Map:
            STADIUM_WINTER_P, THROWBACKSTADIUM_P, TRAINSTATION_DAWN_P, TRAINSTATION_NIGHT_P, TRAINSTATION_P,
            UNDERWATER_P, UTOPIASTADIUM_DUSK_P, UTOPIASTADIUM_P, UTOPIASTADIUM_SNOW_P, WASTELAND_NIGHT_P,
            WASTELAND_NIGHT_S_P, WASTELAND_P, WASTELAND_S_P) = get_args(AnyMap)
-    NAMES = dict(zip(ALL, ("Starbase ARC", "Starbase ARC (Standard)", "Champions Field (NFL)", "Salty Shores (Night)",
+    NAMES = dict(zip(ALL, ("Starbase ARC", "Starbase ARC (Aftermath)", "Starbase ARC (Standard)", "Champions Field (NFL)", "Salty Shores (Night)",
                            "Salty Shores", "Salty Shores (Volley)", "Forbidden Temple (Day)", "Forbidden Temple",
                            "Champions Field (Day)", "Rivals Arena", "Champions Field", "Mannfield (Night)", "Mannfield",
                            "Mannfield (Stormy)", "Mannfield (Snowy)", "Farmstead (Night)", "Farmstead",
@@ -135,12 +139,12 @@ class Map:
                            "Urban Central", "Aquadome", "Utopia Coliseum (Dusk)", "Utopia Coliseum",
                            "Utopia Coliseum (Snowy)", "Wasteland (Night)", "Wasteland (Standard, Night)", "Wasteland",
                            "Wasteland (Standard)")))
-    STANDARD_MAPS = (BEACH_NIGHT_P, CHN_STADIUM_P, CS_DAY_P, CS_P, EUROSTADIUM_NIGHT_P, EUROSTADIUM_P,
+    STANDARD_MAPS = (ARC_DARC_P, ARC_STANDARD_P, BEACH_NIGHT_P, CHN_STADIUM_P, CS_DAY_P, CS_P, EUROSTADIUM_NIGHT_P, EUROSTADIUM_P,
                      EUROSTADIUM_RAINY_P, EUROSTADIUM_SNOWNIGHT_P, FARM_P, MUSIC_P, NEOTOKYO_STANDARD_P, PARK_NIGHT_P,
                      PARK_P, PARK_RAINY_P, STADIUM_DAY_P, STADIUM_FOGGY_P, STADIUM_P, TRAINSTATION_DAWN_P,
                      TRAINSTATION_NIGHT_P, TRAINSTATION_P, UNDERWATER_P, UTOPIASTADIUM_DUSK_P, UTOPIASTADIUM_P,
                      WASTELAND_NIGHT_S_P, WASTELAND_S_P)
-    NON_STANDARD_MAPS = (ARC_P, ARC_STANDARD_P, BB_P, BEACH_P, BEACHVOLLEY, CHN_STADIUM_DAY_P, CS_HW_P, FARM_NIGHT_P,
+    NON_STANDARD_MAPS = (ARC_P, BB_P, BEACH_P, BEACHVOLLEY, CHN_STADIUM_DAY_P, CS_HW_P, FARM_NIGHT_P,
                          FARM_UPSIDEDOWN_P, HAUNTED_TRAINSTATION_P, HOOPSSTADIUM_P, LABS_CIRCLEPILLARS_P, LABS_COSMIC_P,
                          LABS_COSMIC_V4_P, LABS_DOUBLEGOAL_P, LABS_DOUBLEGOAL_V2_P, LABS_OCTAGON_02_P, LABS_OCTAGON_P,
                          LABS_UNDERPASS_P, LABS_UNDERPASS_V0_P, LABS_UTOPIA_P, NEOTOKYO_P, SHATTERSHOT_P,
