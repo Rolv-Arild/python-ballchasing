@@ -17,9 +17,10 @@ setuptools.setup(
     download_url=__download_url__,
     install_requires=["requests"],
     packages=setuptools.find_packages(),
+    python_requires='>=3.8',
     package_data={'ballchasing': ['*.tsv']},
     classifiers=[
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],

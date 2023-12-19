@@ -149,7 +149,7 @@ class Api:
                       past the limit of 200 set by the API
         :param sort_by: sort replays according the selected field
         :param sort_dir: sort direction
-        :param deep: whether or not to get full stats for each replay (will be much slower).
+        :param deep: whether to get full stats for each replay (will be much slower).
         :return: an iterator over the replays returned by the API.
         """
         url = f"{self.base_url}/replays"
