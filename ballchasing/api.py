@@ -115,7 +115,7 @@ class Api:
                     replay_before: Optional[Union[str, datetime]] = None,
                     count: int = 150,
                     sort_by: Optional[AnyReplaySortBy] = None,
-                    sort_dir: Union[AnySortDir] = SortDir.DESCENDING,
+                    sort_dir: AnySortDir = SortDir.DESCENDING,
                     deep: bool = False
                     ) -> Iterator[dict]:
         """
@@ -196,16 +196,17 @@ class Api:
         """
         self._request(f"/replays/{replay_id}", self._session.patch, json=params)
 
-    def upload_replay(self, replay_file, visibility: Optional[AnyVisibility] = None) -> dict:
+    def upload_replay(self, replay_file, visibility: Optional[AnyVisibility] = None, group: Optional[str] = None) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
         :param replay_file: replay file to upload.
         :param visibility: to set the visibility of the uploaded replay.
+        :param group: to upload the replay to an existing group.
         :return: the result of the POST request.
         """
         return self._request(f"/v2/upload", self._session.post, files={"file": replay_file},
-                             params={"visibility": visibility}).json()
+                             params={"group": group, "visibility": visibility}).json()
 
     def delete_replay(self, replay_id: str) -> None:
         """
@@ -222,8 +223,8 @@ class Api:
                    created_before: Optional[Union[str, datetime]] = None,
                    created_after: Optional[Union[str, datetime]] = None,
                    count: int = 200,
-                   sort_by: Union[AnyGroupSortBy] = GroupSortBy.CREATED,
-                   sort_dir: Union[AnySortDir] = SortDir.DESCENDING
+                   sort_by: AnyGroupSortBy = GroupSortBy.CREATED,
+                   sort_dir: AnySortDir = SortDir.DESCENDING
                    ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replay groups.
@@ -264,8 +265,8 @@ class Api:
 
     def create_group(self,
                      name: str,
-                     player_identification: Union[AnyPlayerIdentification],
-                     team_identification: Union[AnyTeamIdentification],
+                     player_identification: AnyPlayerIdentification,
+                     team_identification: AnyTeamIdentification,
                      parent: Optional[str] = None
                      ) -> dict:
         """
