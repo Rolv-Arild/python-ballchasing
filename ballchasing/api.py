@@ -2,6 +2,7 @@ import os
 import time
 from datetime import datetime
 from typing import Optional, Iterator, Union, List
+from urllib.parse import parse_qs, urlparse
 
 from requests import sessions, Response, ConnectionError
 
@@ -174,9 +175,9 @@ class Api:
             if "next" not in d:
                 break
 
-            url = d["next"]
+            next_url = d["next"]
             left -= len(batch)
-            params = {}
+            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
 
     def get_replay(self, replay_id: str) -> dict:
         """
@@ -259,9 +260,9 @@ class Api:
             if "next" not in d:
                 break
 
-            url = d["next"]
+            next_url = d["next"]
             left -= len(batch)
-            params = {}
+            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
 
     def create_group(self,
                      name: str,
