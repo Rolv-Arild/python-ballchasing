@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Iterator, Union, List
 from urllib.parse import parse_qs, urlparse
 
-from requests import sessions, Response, ConnectionError
+from requests import sessions, Response, ConnectionError, HTTPError
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult
@@ -71,14 +71,19 @@ class Api:
                 if retries >= 10:
                     raise e
                 continue
+            try:
+                r.raise_for_status()
+            except HTTPError as e:
+                if r.status_code == 429:
+                    if self.print_on_rate_limit:
+                        print(429, url, self.rate_limit_count)
+                    if self.sleep_time_on_rate_limit:
+                        time.sleep(self.sleep_time_on_rate_limit)
+                    self.rate_limit_count += 1
+                else:
+                    raise e
             if 200 <= r.status_code < 300:
                 return r
-            elif r.status_code == 429:
-                if self.print_on_rate_limit:
-                    print(429, url, self.rate_limit_count)
-                if self.sleep_time_on_rate_limit:
-                    time.sleep(self.sleep_time_on_rate_limit)
-                self.rate_limit_count += 1
             else:
                 raise ValueError(r, r.json())
 
