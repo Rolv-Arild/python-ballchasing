@@ -74,13 +74,13 @@ class Api:
             if 200 <= r.status_code < 300:
                 return r
             elif r.status_code == 429:
+                self.rate_limit_count += 1
                 if self.print_on_rate_limit:
-                    print(429, url, self.rate_limit_count)
+                    print(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
                 if self.sleep_time_on_rate_limit:
                     time.sleep(self.sleep_time_on_rate_limit)
-                self.rate_limit_count += 1
             else:
-                raise ValueError(r, r.json())
+                raise r.raise_for_status()
 
     def ping(self):
         """
