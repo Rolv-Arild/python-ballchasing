@@ -1,12 +1,45 @@
 from datetime import datetime
+from distutils.util import strtobool
 from pathlib import Path
 
-stats_info = open(Path(__file__).parent / "stats_info.tsv")
-stats_info = [line.strip().split("\t") for line in stats_info]
 
-replay_cols = [row[0] for row in stats_info if row[2].lower() == "true"]
-team_cols = [row[0] for row in stats_info if row[3].lower() == "true"]
-player_cols = [row[0] for row in stats_info if row[4].lower() == "true"]
+def rfc3339(dt):
+    if dt is None:
+        return dt
+    elif isinstance(dt, str):
+        return dt
+    elif isinstance(dt, datetime):
+        return dt.isoformat("T") + "Z"
+    else:
+        raise ValueError("Date must be either string or datetime")
+
+
+def _get_stats_info():
+    cur_path = Path(__file__).parent
+    with open(cur_path / "stats_info.tsv") as stats_info:
+        stats_info = [line.strip().split("\t") for line in stats_info]
+
+    header = stats_info[0]
+    stats = {}
+    for row in stats_info[1:]:
+        stat_info = {}
+        for k, v in zip(header, row):
+            if k.startswith("is_"):
+                v = bool(strtobool(v))
+            elif k == "dtype":
+                v = {
+                    "str": str,
+                    "int": int,
+                    "float": float,
+                    "bool": bool,
+                    "datetime": datetime,
+                }[v]
+            stat_info[k] = v
+        stats[stat_info["name"]] = stat_info
+    return stats
+
+
+stats_info = _get_stats_info()
 
 
 def get_value(replay, path, dtype, *path_args):
@@ -21,53 +54,47 @@ def get_value(replay, path, dtype, *path_args):
             return "MISSING"
     if isinstance(tree, (dict, list)):
         return "MISSING"
-    if dtype == "str":
-        return str(tree)
-    elif dtype == "int":
-        return int(tree)
-    elif dtype == "float":
-        return float(tree)
-    elif dtype == "bool":
-        return bool(tree)
 
-    return tree
+    if dtype == datetime:
+        return rfc3339(tree)
+
+    return dtype(tree)
 
 
-def parse_replay(replay: dict):
-    replay_stats = []
-    team_stats = [[], []]
-    player_stats = []
+def parse_replay_stats(replay: dict):
+    replay_stats = {}
+    team_stats = {}
+    player_stats = {}
 
-    for name, path, is_replay, is_team, is_player, type_, is_player_sum, dtype in stats_info:
-        if is_replay.lower() == "true":
-            replay_stats.append(get_value(replay, path, dtype))
+    for stat in stats_info.values():
+        is_replay = stat["is_replay"]
+        is_team = stat["is_team"]
+        is_player = stat["is_player"]
+        name = stat["name"]
+        path = stat["path"]
+        dtype = stat["dtype"]
 
-        if is_team.lower() == "true":
-            for n, team in enumerate(("blue", "orange")):
-                ts = team_stats[n]
-                ts.append(get_value(replay, path, dtype, team))
+        if is_replay:
+            v = get_value(replay, path, dtype)
+            replay_stats[name] = v
 
-        if is_player.lower() == "true":
-            n = 0
+        if is_team:
+            for team in ("blue", "orange"):
+                ts = team_stats.setdefault(team, {})
+                v = get_value(replay, path, dtype, team)
+                ts[name] = v
+
+        if is_player:
             for team in "blue", "orange":
-                for p in range(len(replay[team]["players"])):
-                    if n >= len(player_stats):
-                        player_stats.append([])
-                    ps = player_stats[n]
-                    ps.append(get_value(replay, path, dtype, team, p))
-                    n += 1
+                for n, p in enumerate(replay[team]["players"]):
+                    pid = p["id"]
+                    pid = pid["platform"] + ":" + pid["id"]
+                    ps = player_stats.setdefault(pid, {})
+                    v = get_value(replay, path, dtype, team, n)
+                    ps[name] = v
 
-    yield "replay", replay_stats
-    yield from (("team", ts) for ts in team_stats)
-    yield from (("player", ps) for ps in player_stats)
-
-
-def rfc3339(dt):
-    if dt is None:
-        return dt
-    elif isinstance(dt, str):
-        return dt
-    elif isinstance(dt, datetime):
-        return dt.isoformat("T") + "Z"
-    else:
-        raise ValueError("Date must be either string or datetime")
+    return {
+        "replay": replay_stats,
+        "teams": team_stats,
+        "players": player_stats
+    }

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-ballchasing"
+version = "0.2.0"
+authors = [
+    { name = "Rolv-Arild Braaten", email = "rolv_arild@hotmail.com" },
+]
+description = "A Python wrapper around the Ballchasing API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT License" }
+classifiers = [
+    "Programming Language :: Python :: 3.8",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Rolv-Arild/python-ballchasing"
+"Download" = "https://pypi.python.org/pypi/python-ballchasing"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+ballchasing = ["*.tsv"]

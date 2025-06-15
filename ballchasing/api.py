@@ -8,18 +8,22 @@ from requests import sessions, Response, ConnectionError
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult
-from .util import rfc3339, replay_cols, team_cols, player_cols, parse_replay
+from .util import rfc3339, parse_replay_stats
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
 
-class Api:
+class BallchasingApi:
     """
     Class for communication with ballchasing.com API (https://ballchasing.com/doc/api)
     """
 
-    def __init__(self, auth_key: str, sleep_time_on_rate_limit: Optional[float] = None,
-                 print_on_rate_limit: bool = False, base_url=None, do_initial_ping=True):
+    def __init__(self,
+                 auth_key: str,
+                 sleep_time_on_rate_limit: Optional[float] = None,
+                 print_on_rate_limit: bool = False,
+                 base_url=None,
+                 do_initial_ping=True):
         """
 
         :param auth_key: authentication key for API calls.
@@ -29,9 +33,7 @@ class Api:
         """
         self.auth_key = auth_key
         self._session = sessions.Session()
-        self.steam_name = None
-        self.steam_id = None
-        self.patron_type = None
+        self._ping_result = None
         self.rate_limit_count = 0
         self.base_url = DEFAULT_URL if base_url is None else base_url
         if do_initial_ping:
@@ -48,7 +50,35 @@ class Api:
             self.sleep_time_on_rate_limit = sleep_time_on_rate_limit
         self.print_on_rate_limit = print_on_rate_limit
 
-    def _request(self, url_or_endpoint: str, method: callable, **params) -> Response:
+    @property
+    def steam_name(self):
+        if self._ping_result is None:
+            self.ping()
+        return self._ping_result.get("name")
+
+    @property
+    def steam_id(self):
+        if self._ping_result is None:
+            self.ping()
+        return self._ping_result.get("steam_id")
+
+    @property
+    def patron_type(self):
+        if self._ping_result is None:
+            self.ping()
+        return self._ping_result.get("type")
+
+    @property
+    def quota(self):
+        if self._ping_result is None:
+            self.ping()
+        return self._ping_result.get("quota")
+
+    def _request(self,
+                 url_or_endpoint: str,
+                 method: str,
+                 **params
+                 ) -> Response:
         """
         Helper method for all requests.
 
@@ -56,33 +86,37 @@ class Api:
         :param method: the method to use.
         :param params: parameters for GET request.
         :return: the request result.
+        :raises ConnectionError: if the connection fails after max retries.
+        :raises HTTPError: if the request fails with a status code other than 2xx or 429.
         """
         headers = {"Authorization": self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
-        retries = 0
-        while True:
+        max_retries = 8
+        for retries in range(max_retries):
             try:
-                r = method(url, headers=headers, **params)
-                retries = 0
+                r: Response = self._session.request(method=method, url=url, headers=headers, **params)
+                if 200 <= r.status_code < 300:
+                    return r
+                elif r.status_code == 429:
+                    self.rate_limit_count += 1
+                    if self.print_on_rate_limit:
+                        print(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
+                    retry_after = r.headers.get("Retry-After", '0')
+                    retry_after = int(retry_after) if retry_after.isdigit() else None
+                    if retry_after:  # integer > 0
+                        time.sleep(retry_after)
+                    elif self.sleep_time_on_rate_limit:
+                        time.sleep(self.sleep_time_on_rate_limit)
+                else:
+                    r.raise_for_status()  # Raise an error for any other status code
             except ConnectionError as e:
-                print("Connection error, trying again in 10 seconds...")
-                time.sleep(10)
-                retries += 1
-                if retries >= 10:
+                if retries >= max_retries - 1:
                     raise e
-                continue
-            if 200 <= r.status_code < 300:
-                return r
-            elif r.status_code == 429:
-                self.rate_limit_count += 1
-                if self.print_on_rate_limit:
-                    print(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
-                if self.sleep_time_on_rate_limit:
-                    time.sleep(self.sleep_time_on_rate_limit)
-            else:
-                raise r.raise_for_status()
+                s = 2 ** retries
+                print(f"Connection error, trying again in {s} seconds...")
+                time.sleep(s)
 
-    def ping(self):
+    def ping(self) -> dict:
         """
         Use this API to:
 
@@ -92,13 +126,12 @@ class Api:
         This method runs automatically at initialization and the steam name and id as well as patron type are stored.
         :return: ping response.
         """
-        result = self._request("/", self._session.get).json()
-        self.steam_name = result["name"]
-        self.steam_id = result["steam_id"]
-        self.patron_type = result["type"]
+        result = self._request("/", "GET").json()
+        self._ping_result = result
         return result
 
-    def get_replays(self, title: Optional[str] = None,
+    def get_replays(self,
+                    title: Optional[str] = None,
                     player_name: Optional[Union[str, List[str]]] = None,
                     player_id: Optional[Union[str, List[str]]] = None,
                     playlist: Optional[Union[AnyPlaylist, List[AnyPlaylist]]] = None,
@@ -164,7 +197,7 @@ class Api:
         while left > 0:
             request_count = min(left, 200)
             params["count"] = request_count
-            d = self._request(url, self._session.get, params=params).json()
+            d = self._request(url, "GET", params=params).json()
 
             batch = d["list"][:request_count]
             if not deep:
@@ -186,7 +219,7 @@ class Api:
         :param replay_id: the replay id.
         :return: the result of the GET request.
         """
-        return self._request(f"/replays/{replay_id}", self._session.get).json()
+        return self._request(f"/replays/{replay_id}", "GET").json()
 
     def patch_replay(self, replay_id: str, **params) -> None:
         """
@@ -195,9 +228,12 @@ class Api:
         :param replay_id: the replay id.
         :param params: parameters for the PATCH request.
         """
-        self._request(f"/replays/{replay_id}", self._session.patch, json=params)
+        self._request(f"/replays/{replay_id}", "PATCH", json=params)
 
-    def upload_replay(self, replay_file, visibility: Optional[AnyVisibility] = None, group: Optional[str] = None) -> dict:
+    def upload_replay(self,
+                      replay_file,
+                      visibility: Optional[AnyVisibility] = None,
+                      group: Optional[str] = None) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
@@ -206,7 +242,7 @@ class Api:
         :param group: to upload the replay to an existing group.
         :return: the result of the POST request.
         """
-        return self._request(f"/v2/upload", self._session.post, files={"file": replay_file},
+        return self._request(f"/v2/upload", "POST", files={"file": replay_file},
                              params={"group": group, "visibility": visibility}).json()
 
     def delete_replay(self, replay_id: str) -> None:
@@ -216,9 +252,10 @@ class Api:
 
         :param replay_id: the replay id.
         """
-        self._request(f"/replays/{replay_id}", self._session.delete)
+        self._request(f"/replays/{replay_id}", "DELETE")
 
-    def get_groups(self, name: Optional[str] = None,
+    def get_groups(self,
+                   name: Optional[str] = None,
                    creator: Optional[str] = None,
                    group: Optional[str] = None,
                    created_before: Optional[Union[str, datetime]] = None,
@@ -252,7 +289,7 @@ class Api:
         while left > 0:
             request_count = min(left, 200)
             params["count"] = request_count
-            d = self._request(url, self._session.get, params=params).json()
+            d = self._request(url, "GET", params=params).json()
 
             batch = d["list"][:request_count]
             yield from batch
@@ -287,7 +324,7 @@ class Api:
         """
         json = {"name": name, "player_identification": player_identification,
                 "team_identification": team_identification, "parent": parent}
-        return self._request(f"/groups", self._session.post, json=json).json()
+        return self._request(f"/groups", "POST", json=json).json()
 
     def get_group(self, group_id: str) -> dict:
         """
@@ -296,7 +333,7 @@ class Api:
         :param group_id: the group id.
         :return: the group info with stats.
         """
-        return self._request(f"/groups/{group_id}", self._session.get).json()
+        return self._request(f"/groups/{group_id}", "GET").json()
 
     def patch_group(self, group_id: str, **params) -> None:
         """
@@ -305,7 +342,7 @@ class Api:
         :param group_id: the group id
         :param params: parameters for the PATCH request.
         """
-        self._request(f"/groups/{group_id}", self._session.patch, json=params)
+        self._request(f"/groups/{group_id}", "PATCH", json=params)
 
     def delete_group(self, group_id: str) -> None:
         """
@@ -314,7 +351,7 @@ class Api:
 
         :param group_id: the group id.
         """
-        self._request(f"/groups/{group_id}", self._session.delete)
+        self._request(f"/groups/{group_id}", "DELETE")
 
     def get_group_replays(self, group_id: str, deep: bool = False) -> Iterator[dict]:
         """
@@ -338,7 +375,7 @@ class Api:
         :param replay_id: the replay id.
         :param folder: the folder to download into.
         """
-        r = self._request(f"/replays/{replay_id}/file", self._session.get)
+        r = self._request(f"/replays/{replay_id}/file", "GET")
         with open(f"{folder}/{replay_id}.replay", "wb") as f:
             for ch in r:
                 f.write(ch)
@@ -349,7 +386,7 @@ class Api:
 
         :param group_id: the base group id.
         :param folder: the folder in which to create the group folder.
-        :param recursive: whether or not to create new folders for child groups.
+        :param recursive: whether to create new folders for child groups.
         """
         folder = os.path.join(folder, group_id)
         if recursive:
@@ -366,79 +403,25 @@ class Api:
         """
         Use this API to get the list of map codes to map names (map as in stadium).
         """
-        res = self._request("/maps", self._session.get).json()
+        res = self._request("/maps", "GET").json()
         return res
 
-    def generate_tsvs(self, replays: Iterator[Union[dict, str]],
-                      path_name: str,
-                      player_suffix: Optional[str] = "-players.tsv",
-                      team_suffix: Optional[str] = "-teams.tsv",
-                      replay_suffix: Optional[str] = "-replays.tsv",
-                      sep="\t",
-                      ):
+    def get_stats(self, replay: Union[dict, str]):
         """
-        Generates tsv files for players, teams and replay info.
+        Gets stats for players, teams and replay info.
 
-        :param replays: an iterator over either replays (with stats) or replay ids.
-        :param path_name: the path to save the files at, including the name prefix.
-        :param player_suffix: suffix for the player file. Set to None to disable player file writing.
-        :param team_suffix: suffix for the team file. Set to None to disable team file writing.
-        :param replay_suffix: suffix for the replay file. Set to None to disable replay file writing.
-        :param sep: the separator to use. Default is tab character (tsv).
+        :param replay: the replay to get stats for. Can be a replay id (str) or a replay dict.
+        :return: a dictionary containing replay, team and player stats.
         """
-        player_file = None
-        if player_suffix is not None:
-            player_file = open(path_name + player_suffix, "w")
-            player_file.write(sep.join(player_cols) + "\n")
 
-        team_file = None
-        if team_suffix is not None:
-            team_file = open(path_name + team_suffix, "w")
-            team_file.write(sep.join(team_cols) + "\n")
+        if isinstance(replay, str):
+            replay = self.get_replay(replay)
+        elif isinstance(replay, dict) and "title" not in replay:
+            replay = self.get_replay(replay["id"])
 
-        replay_file = None
-        if replay_suffix is not None:
-            replay_file = open(path_name + replay_suffix, "w")
-            replay_file.write(sep.join(replay_cols) + "\n")
+        stats = parse_replay_stats(replay)
+        return stats
 
-        for replay in replays:
-            if isinstance(replay, str):
-                replay = self.get_replay(replay)
-            for kind, values in parse_replay(replay):
-                values = [str(v) for v in values]
-                if kind == "replay" and replay_file is not None:
-                    replay_file.write(sep.join(values) + "\n")
-                elif kind == "team" and team_file is not None:
-                    team_file.write(sep.join(values) + "\n")
-                elif kind == "player" and player_file is not None:
-                    player_file.write(sep.join(values) + "\n")
-
-    def __str__(self):
-        return f"BallchasingApi[key={self.auth_key},name={self.steam_name}," \
-               f"steam_id={self.steam_id},type={self.patron_type}]"
-
-
-if __name__ == '__main__':
-    # Basic initial tests
-    import sys
-
-    token = sys.argv[1]
-    api = Api(token)
-    print(api)
-    # api.get_replays(season="123")
-    # api.delete_replay("a22a8c81-fadd-4453-914e-ae54c2b8391f")
-    upload_response = api.upload_replay(open("4E2B22344F748C6EB4922DB8CC8AC282.replay", "rb"))
-    replays_response = api.get_replays()
-    replay_response = api.get_replay(next(replays_response)["id"])
-
-    groups_response = api.get_groups()
-    group_response = api.get_group(next(groups_response)["id"])
-
-    create_group_response = api.create_group(f"test-{time.time()}", "by-id", "by-distinct-players")
-    api.patch_group(create_group_response["id"], team_identification="by-player-clusters")
-
-    api.patch_replay(upload_response["id"], group=create_group_response["id"])
-
-    api.delete_group(create_group_response["id"])
-    api.delete_replay(upload_response["id"])
-    print("Nice")
+    def __repr__(self):
+        return f"BallchasingApi(key={self.auth_key},name={self.steam_name}," \
+               f"steam_id={self.steam_id},type={self.patron_type})"

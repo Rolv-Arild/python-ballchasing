@@ -22,19 +22,37 @@
 # SOFTWARE.
 
 """A library that provides a Python interface to the Ballchasing API."""
-from __future__ import absolute_import
+import sys
 
-__author__       = 'Rolv-Arild Braaten'
-__email__        = 'rolv_arild@hotmail.com'
-__copyright__    = 'Copyright (c) 2020 Rolv-Arild Braaten'
-__license__      = 'Apache License 2.0'
-__version__      = '0.1.22'
-__url__          = 'https://github.com/Rolv-Arild/python-ballchasing'
-__download_url__ = 'https://pypi.python.org/pypi/python-ballchasing'
-__description__  = 'A Python wrapper around the Ballchasing API'
+# In Python 3.8+, importlib.metadata is in the standard library.
+# For older versions, a backport is available as importlib_metadata.
+if sys.version_info >= (3, 8):
+    from importlib.metadata import version, metadata
+else:
+    from importlib_metadata import version, metadata
 
-from .api import Api                        # noqa
-from .constants import (                    # noqa
+try:
+    # This will read the version from the installed package's metadata
+    # (which is defined in pyproject.toml)
+    __version__ = version("python-ballchasing")
+
+    # You can also get other metadata in a similar way
+    pkg_metadata = metadata("python-ballchasing")
+    __author__ = pkg_metadata.get("Author-Email")
+    __description__ = pkg_metadata.get("Summary")
+except Exception:
+    # If the package is not installed (e.g., when running in a development
+    # environment without an editable install), you can fall back to defaults.
+    __version__ = "0.0.0-dev"
+    __description__ = 'A Python wrapper around the Ballchasing API'
+    __author__ = 'Rolv-Arild Braaten <rolv_arild@hotmail.com>'
+
+# Import the main classes and constants to make them easily accessible to users.
+from .api import BallchasingApi
+
+Api = BallchasingApi  # For importing like `import ballchasing; api = ballchasing.Api`
+
+from .constants import (
     Playlist,
     Rank,
     Season,
