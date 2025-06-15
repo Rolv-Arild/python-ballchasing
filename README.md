@@ -12,6 +12,7 @@ Before you can use the library, you need an API authentication key from ballchas
 1. Log in to [ballchasing.com](https://ballchasing.com/).
 2. Navigate to the Upload tab.
 3. Create an API key and copy it.
+   
 **Keep your API key secure and do not share it publicly.**
 
 ## API
