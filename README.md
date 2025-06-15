@@ -71,5 +71,5 @@ for group in groups:
     deep=True,  # To get detailed replay info
   )
   for replay in replays:
-    api.download_replay(replay_id=replay["id"], folder="/path/to/destination/)  # You could also download like this
+    api.download_replay(replay_id=replay["id"], folder="/path/to/destination/")  # You could also download like this
 ```
