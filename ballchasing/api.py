@@ -1,7 +1,8 @@
 import os
 import time
 from datetime import datetime
-from typing import Optional, Iterator, Union, List
+from pathlib import Path
+from typing import Optional, Iterator, Union, List, BinaryIO
 from urllib.parse import parse_qs, urlparse
 
 from requests import sessions, Response, ConnectionError
@@ -18,12 +19,14 @@ class BallchasingApi:
     Class for communication with ballchasing.com API (https://ballchasing.com/doc/api)
     """
 
-    def __init__(self,
-                 auth_key: str,
-                 sleep_time_on_rate_limit: Optional[float] = None,
-                 print_on_rate_limit: bool = False,
-                 base_url=None,
-                 do_initial_ping=True):
+    def __init__(
+            self,
+            auth_key: str,
+            sleep_time_on_rate_limit: Optional[float] = None,
+            print_on_rate_limit: bool = False,
+            base_url=None,
+            do_initial_ping=True
+    ):
         """
 
         :param auth_key: authentication key for API calls.
@@ -74,11 +77,12 @@ class BallchasingApi:
             self.ping()
         return self._ping_result.get("quota")
 
-    def _request(self,
-                 url_or_endpoint: str,
-                 method: str,
-                 **params
-                 ) -> Response:
+    def _request(
+            self,
+            url_or_endpoint: str,
+            method: str,
+            **params
+    ) -> Response:
         """
         Helper method for all requests.
 
@@ -92,7 +96,8 @@ class BallchasingApi:
         headers = {"Authorization": self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
         max_retries = 8
-        for retries in range(max_retries):
+        retries = 0
+        while True:
             try:
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
                 if 200 <= r.status_code < 300:
@@ -108,13 +113,14 @@ class BallchasingApi:
                     elif self.sleep_time_on_rate_limit:
                         time.sleep(self.sleep_time_on_rate_limit)
                 else:
-                    r.raise_for_status()  # Raise an error for any other status code
+                    r.raise_for_status()  # Raise an error for any other status code'
             except ConnectionError as e:
                 if retries >= max_retries - 1:
                     raise e
                 s = 2 ** retries
                 print(f"Connection error, trying again in {s} seconds...")
                 time.sleep(s)
+                retries += 1
 
     def ping(self) -> dict:
         """
@@ -130,28 +136,29 @@ class BallchasingApi:
         self._ping_result = result
         return result
 
-    def get_replays(self,
-                    title: Optional[str] = None,
-                    player_name: Optional[Union[str, List[str]]] = None,
-                    player_id: Optional[Union[str, List[str]]] = None,
-                    playlist: Optional[Union[AnyPlaylist, List[AnyPlaylist]]] = None,
-                    season: Optional[Union[AnySeason, List[AnySeason]]] = None,
-                    match_result: Optional[Union[AnyMatchResult, List[AnyMatchResult]]] = None,
-                    min_rank: Optional[AnyRank] = None,
-                    max_rank: Optional[AnyRank] = None,
-                    pro: Optional[bool] = None,
-                    uploader: Optional[str] = None,
-                    group_id: Optional[Union[str, List[str]]] = None,
-                    map_id: Optional[Union[AnyMap, List[AnyMap]]] = None,
-                    created_before: Optional[Union[str, datetime]] = None,
-                    created_after: Optional[Union[str, datetime]] = None,
-                    replay_after: Optional[Union[str, datetime]] = None,
-                    replay_before: Optional[Union[str, datetime]] = None,
-                    count: int = 150,
-                    sort_by: Optional[AnyReplaySortBy] = None,
-                    sort_dir: AnySortDir = SortDir.DESCENDING,
-                    deep: bool = False
-                    ) -> Iterator[dict]:
+    def get_replays(
+            self,
+            title: Optional[str] = None,
+            player_name: Optional[Union[str, List[str]]] = None,
+            player_id: Optional[Union[str, List[str]]] = None,
+            playlist: Optional[Union[AnyPlaylist, List[AnyPlaylist]]] = None,
+            season: Optional[Union[AnySeason, List[AnySeason]]] = None,
+            match_result: Optional[Union[AnyMatchResult, List[AnyMatchResult]]] = None,
+            min_rank: Optional[AnyRank] = None,
+            max_rank: Optional[AnyRank] = None,
+            pro: Optional[bool] = None,
+            uploader: Optional[str] = None,
+            group_id: Optional[Union[str, List[str]]] = None,
+            map_id: Optional[Union[AnyMap, List[AnyMap]]] = None,
+            created_before: Optional[Union[str, datetime]] = None,
+            created_after: Optional[Union[str, datetime]] = None,
+            replay_after: Optional[Union[str, datetime]] = None,
+            replay_before: Optional[Union[str, datetime]] = None,
+            count: int = 150,
+            sort_by: Optional[AnyReplaySortBy] = None,
+            sort_dir: AnySortDir = SortDir.DESCENDING,
+            deep: bool = False
+    ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
 
@@ -230,18 +237,23 @@ class BallchasingApi:
         """
         self._request(f"/replays/{replay_id}", "PATCH", json=params)
 
-    def upload_replay(self,
-                      replay_file,
-                      visibility: Optional[AnyVisibility] = None,
-                      group: Optional[str] = None) -> dict:
+    def upload_replay(
+            self,
+            replay_file: Union[str, Path, BinaryIO],
+            visibility: Optional[AnyVisibility] = None,
+            group: Optional[str] = None
+    ) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
-        :param replay_file: replay file to upload.
+        :param replay_file: replay file to upload. Can be a file path (str or Path) or a file-like object.
         :param visibility: to set the visibility of the uploaded replay.
         :param group: to upload the replay to an existing group.
         :return: the result of the POST request.
         """
+        if isinstance(replay_file, (str, Path)):
+            with open(replay_file, "rb") as f:
+                return self.upload_replay(f, visibility, group)
         return self._request(f"/v2/upload", "POST", files={"file": replay_file},
                              params={"group": group, "visibility": visibility}).json()
 
@@ -254,16 +266,17 @@ class BallchasingApi:
         """
         self._request(f"/replays/{replay_id}", "DELETE")
 
-    def get_groups(self,
-                   name: Optional[str] = None,
-                   creator: Optional[str] = None,
-                   group: Optional[str] = None,
-                   created_before: Optional[Union[str, datetime]] = None,
-                   created_after: Optional[Union[str, datetime]] = None,
-                   count: int = 200,
-                   sort_by: AnyGroupSortBy = GroupSortBy.CREATED,
-                   sort_dir: AnySortDir = SortDir.DESCENDING
-                   ) -> Iterator[dict]:
+    def get_groups(
+            self,
+            name: Optional[str] = None,
+            creator: Optional[str] = None,
+            group: Optional[str] = None,
+            created_before: Optional[Union[str, datetime]] = None,
+            created_after: Optional[Union[str, datetime]] = None,
+            count: int = 200,
+            sort_by: AnyGroupSortBy = GroupSortBy.CREATED,
+            sort_dir: AnySortDir = SortDir.DESCENDING
+    ) -> Iterator[dict]:
         """
         This endpoint lets you filter and retrieve replay groups.
 
@@ -301,12 +314,13 @@ class BallchasingApi:
             left -= len(batch)
             params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
 
-    def create_group(self,
-                     name: str,
-                     player_identification: AnyPlayerIdentification,
-                     team_identification: AnyTeamIdentification,
-                     parent: Optional[str] = None
-                     ) -> dict:
+    def create_group(
+            self,
+            name: str,
+            player_identification: AnyPlayerIdentification,
+            team_identification: AnyTeamIdentification,
+            parent: Optional[str] = None
+    ) -> dict:
         """
         Use this API to create a new replay group.
 
