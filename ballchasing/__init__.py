@@ -65,3 +65,10 @@ from .constants import (
     TeamIdentification,
     Map
 )
+
+from .typed import (
+    ShallowReplay,
+    ShallowGroup,
+    DeepReplay,
+    DeepGroup
+)

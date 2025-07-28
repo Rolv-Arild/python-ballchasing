@@ -1,9 +1,9 @@
 from datetime import datetime
-from distutils.util import strtobool
 from pathlib import Path
+from typing import Optional
 
 
-def rfc3339(dt):
+def to_rfc3339(dt: Optional[datetime]):
     if dt is None:
         return dt
     elif isinstance(dt, str):
@@ -12,6 +12,18 @@ def rfc3339(dt):
         return dt.isoformat("T") + "Z"
     else:
         raise ValueError("Date must be either string or datetime")
+
+
+def from_rfc3339(s: str):
+    """
+    Convert an RFC3339 formatted string to a datetime object.
+    """
+    s = s.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        dt = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f%z")
+    return dt
 
 
 def _get_stats_info():
@@ -25,7 +37,7 @@ def _get_stats_info():
         stat_info = {}
         for k, v in zip(header, row):
             if k.startswith("is_"):
-                v = bool(strtobool(v))
+                v = v.lower() in ("true", "1")
             elif k == "dtype":
                 v = {
                     "str": str,
@@ -56,7 +68,7 @@ def get_value(replay, path, dtype, *path_args):
         return "MISSING"
 
     if dtype == datetime:
-        return rfc3339(tree)
+        return to_rfc3339(tree)
 
     return dtype(tree)
 

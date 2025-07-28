@@ -73,3 +73,19 @@ for group in groups:
   for replay in replays:
     api.download_replay(replay_id=replay["id"], folder="/path/to/destination/")  # You could also download like this
 ```
+
+Additionally, there's the option to put responses (replays, groups) into typed objects for better type hinting and validation.
+It also attempts to fill in missing variables not returned by ballchasing (e.g. if a team has 0 goals they won't have a "goal" entry in the response)
+The classes can also be found under the `typing` folder and used as a reference for what the API returns.
+
+```python
+# When creating the API, you can specify a default setting for typing (defaults to False)
+api = ballchasing.Api("Your token here", typed=True)
+
+# or you can specify it explicitly
+replay = api.get_replay("2627e02a-aa46-4e13-b66b-b76a32069a07", typed=True)
+print(replay.blue.players[0].name)  # Example of easy attribute access
+
+group = api.get_group("g2-vs-bds-hwbf2eyolb", typed=True)
+print(group.players[0].name)
+```

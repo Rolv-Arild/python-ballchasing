@@ -2,14 +2,16 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Iterator, Union, List, BinaryIO
+from typing import Optional, Union, List, BinaryIO, Iterator
 from urllib.parse import parse_qs, urlparse
 
-from requests import sessions, Response, ConnectionError
+from requests import sessions, Response, ConnectionError, HTTPError
 
 from ballchasing.constants import GroupSortBy, SortDir, AnyPlaylist, AnyMap, AnySeason, AnyRank, AnyReplaySortBy, \
     AnySortDir, AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult
-from .util import rfc3339, parse_replay_stats
+from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
+from .typed.shared import BaseGroup, BasicGroup
+from .util import to_rfc3339, parse_replay_stats
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -22,10 +24,12 @@ class BallchasingApi:
     def __init__(
             self,
             auth_key: str,
+            *,
             sleep_time_on_rate_limit: Optional[float] = None,
             print_on_rate_limit: bool = False,
             base_url=None,
-            do_initial_ping=True
+            do_initial_ping=True,
+            typed=False,
     ):
         """
 
@@ -52,6 +56,7 @@ class BallchasingApi:
         else:
             self.sleep_time_on_rate_limit = sleep_time_on_rate_limit
         self.print_on_rate_limit = print_on_rate_limit
+        self.typed = typed
 
     @property
     def steam_name(self):
@@ -136,8 +141,34 @@ class BallchasingApi:
         self._ping_result = result
         return result
 
+    def _iterable_from_request(self, url, params):
+        # Shared by get_replays and get_groups
+        remaining = params["count"]
+        # return_length = True
+        while remaining > 0:
+            request_count = min(remaining, 200)
+            params["count"] = request_count
+            try:
+                d = self._request(url, "GET", params=params).json()
+            except HTTPError as e:
+                if e.response.status_code == 504:
+                    # Gateway Timeout, retry
+                    time.sleep(5)
+                    continue
+
+            batch = d["list"][:request_count]
+            yield from batch
+
+            if "next" not in d:
+                break
+
+            next_url = d["next"]
+            remaining -= len(batch)
+            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
+
     def get_replays(
             self,
+            *,
             title: Optional[str] = None,
             player_name: Optional[Union[str, List[str]]] = None,
             player_id: Optional[Union[str, List[str]]] = None,
@@ -157,8 +188,9 @@ class BallchasingApi:
             count: int = 150,
             sort_by: Optional[AnyReplaySortBy] = None,
             sort_dir: AnySortDir = SortDir.DESCENDING,
-            deep: bool = False
-    ) -> Iterator[dict]:
+            deep: bool = False,
+            typed: Optional[bool] = None,
+    ) -> Iterator[Union[dict, ShallowReplay, DeepReplay]]:
         """
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
 
@@ -191,42 +223,41 @@ class BallchasingApi:
         :param sort_by: sort replays according the selected field
         :param sort_dir: sort direction
         :param deep: whether to get full stats for each replay (will be much slower).
+        :param typed: whether to return a typed object (default is self.typed).
         :return: an iterator over the replays returned by the API.
         """
         url = f"{self.base_url}/replays"
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
                   "pro": pro, "uploader": uploader, "group": group_id, "map": map_id,
-                  "created-before": rfc3339(created_before), "created-after": rfc3339(created_after),
-                  "replay-date-after": rfc3339(replay_after), "replay-date-before": rfc3339(replay_before),
-                  "sort-by": sort_by, "sort-dir": sort_dir}
-        left = count
-        while left > 0:
-            request_count = min(left, 200)
-            params["count"] = request_count
-            d = self._request(url, "GET", params=params).json()
+                  "created-before": to_rfc3339(created_before), "created-after": to_rfc3339(created_after),
+                  "replay-date-after": to_rfc3339(replay_after), "replay-date-before": to_rfc3339(replay_before),
+                  "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
 
-            batch = d["list"][:request_count]
-            if not deep:
-                yield from batch
-            else:
-                yield from (self.get_replay(r["id"]) for r in batch)
+        if typed is None:
+            typed = self.typed
 
-            if "next" not in d:
-                break
+        iterator = self._iterable_from_request(url, params)
+        if deep:
+            iterator = (self.get_replay(r["id"], typed=typed) for r in iterator)
+        elif typed:
+            iterator = (ShallowReplay(**r) for r in iterator)
+        yield from iterator
 
-            next_url = d["next"]
-            left -= len(batch)
-            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
-
-    def get_replay(self, replay_id: str) -> dict:
+    def get_replay(self, replay_id: str, *, typed: Optional[bool] = None) -> Union[dict, DeepReplay]:
         """
         Retrieve a given replay’s details and stats.
 
         :param replay_id: the replay id.
+        :param typed: whether to return a typed object (default is self.typed).
         :return: the result of the GET request.
         """
-        return self._request(f"/replays/{replay_id}", "GET").json()
+        result = self._request(f"/replays/{replay_id}", "GET").json()
+        if typed is None:
+            typed = self.typed
+        if typed:
+            result = DeepReplay(**result)
+        return result
 
     def patch_replay(self, replay_id: str, **params) -> None:
         """
@@ -240,6 +271,7 @@ class BallchasingApi:
     def upload_replay(
             self,
             replay_file: Union[str, Path, BinaryIO],
+            *,
             visibility: Optional[AnyVisibility] = None,
             group: Optional[str] = None
     ) -> dict:
@@ -253,7 +285,7 @@ class BallchasingApi:
         """
         if isinstance(replay_file, (str, Path)):
             with open(replay_file, "rb") as f:
-                return self.upload_replay(f, visibility, group)
+                return self.upload_replay(f, visibility=visibility, group=group)
         return self._request(f"/v2/upload", "POST", files={"file": replay_file},
                              params={"group": group, "visibility": visibility}).json()
 
@@ -268,6 +300,7 @@ class BallchasingApi:
 
     def get_groups(
             self,
+            *,
             name: Optional[str] = None,
             creator: Optional[str] = None,
             group: Optional[str] = None,
@@ -275,8 +308,10 @@ class BallchasingApi:
             created_after: Optional[Union[str, datetime]] = None,
             count: int = 200,
             sort_by: AnyGroupSortBy = GroupSortBy.CREATED,
-            sort_dir: AnySortDir = SortDir.DESCENDING
-    ) -> Iterator[dict]:
+            sort_dir: AnySortDir = SortDir.DESCENDING,
+            deep: bool = False,
+            typed: bool = None,
+    ) -> Iterator[Union[dict, ShallowGroup, DeepGroup]]:
         """
         This endpoint lets you filter and retrieve replay groups.
 
@@ -292,30 +327,25 @@ class BallchasingApi:
                       past the limit of 200 set by the API
         :param sort_by: Sort groups according the selected field.
         :param sort_dir: Sort direction.
+        :param deep: whether to get full stats for each group (will be much slower).
+        :param typed: whether to return a typed object (default is self.typed).
         :return: an iterator over the groups returned by the API.
         """
         url = f"{self.base_url}/groups/"
-        params = {"name": name, "creator": creator, "group": group, "created-before": rfc3339(created_before),
-                  "created-after": rfc3339(created_after), "sort-by": sort_by, "sort-dir": sort_dir}
-
-        left = count
-        while left > 0:
-            request_count = min(left, 200)
-            params["count"] = request_count
-            d = self._request(url, "GET", params=params).json()
-
-            batch = d["list"][:request_count]
-            yield from batch
-
-            if "next" not in d:
-                break
-
-            next_url = d["next"]
-            left -= len(batch)
-            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
+        params = {"name": name, "creator": creator, "group": group, "created-before": to_rfc3339(created_before),
+                  "created-after": to_rfc3339(created_after), "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
+        iterator = self._iterable_from_request(url, params)
+        if typed is None:
+            typed = self.typed
+        if deep:
+            iterator = (self.get_group(g["id"], typed=typed) for g in iterator)
+        elif typed:
+            iterator = (ShallowGroup(**g) for g in iterator)
+        yield from iterator
 
     def create_group(
             self,
+            *,
             name: str,
             player_identification: AnyPlayerIdentification,
             team_identification: AnyTeamIdentification,
@@ -340,14 +370,25 @@ class BallchasingApi:
                 "team_identification": team_identification, "parent": parent}
         return self._request(f"/groups", "POST", json=json).json()
 
-    def get_group(self, group_id: str) -> dict:
+    def get_group(
+            self,
+            group_id: str,
+            *,
+            typed: Optional[bool] = None
+    ) -> Union[dict, DeepGroup]:
         """
         This endpoint retrieves a specific replay group info and stats given its id.
 
         :param group_id: the group id.
+        :param typed: whether to return a typed object (default is self.typed).
         :return: the group info with stats.
         """
-        return self._request(f"/groups/{group_id}", "GET").json()
+        result = self._request(f"/groups/{group_id}", "GET").json()
+        if typed is None:
+            typed = self.typed
+        if typed:
+            result = DeepGroup(**result)
+        return result
 
     def patch_group(self, group_id: str, **params) -> None:
         """
@@ -367,46 +408,79 @@ class BallchasingApi:
         """
         self._request(f"/groups/{group_id}", "DELETE")
 
-    def get_group_replays(self, group_id: str, deep: bool = False) -> Iterator[dict]:
+    def get_group_replays(
+            self,
+            group: Union[str, dict, BasicGroup],
+            *,
+            deep: bool = False,
+            typed: Optional[bool] = None
+    ) -> Iterator[Union[dict, ShallowReplay, DeepReplay]]:
         """
         Finds all replays in a group, including child groups.
 
-        :param group_id: the base group id.
+        :param group: the base group id, group dict, or BaseGroup object.
         :param deep: whether or not to get full stats for each replay (will be much slower).
+        :param typed: whether to return a typed object (default is self.typed).
         :return: an iterator over all the replays in the group.
         """
-        child_groups = self.get_groups(group=group_id)
-        for child in child_groups:
-            for replay in self.get_group_replays(child["id"], deep):
-                yield replay
-        for replay in self.get_replays(group_id=group_id, deep=deep):
+        for path in self.get_group_tree(group, deep=deep, typed=typed):
+            group, replay = path
             yield replay
 
-    def download_replay(self, replay_id: str, folder: str):
+    def get_group_tree(
+            self,
+            group: Union[str, dict, BaseGroup],
+            *,
+            deep: bool = False,
+            typed: Optional[bool] = None
+    ):
+        """
+        Finds all replays in a group, and includes the groups leading up to the replays.
+        :param group: the group id or a group dict.
+        :param deep: whether to get full stats for each replay and group (will be much slower).
+        :param typed: whether to return a typed object (default is self.typed).
+        """
+        if isinstance(group, str):
+            group = self.get_group(group)
+        if isinstance(group, BasicGroup):
+            group_id = group.id
+        else:
+            group_id = group["id"]
+        child_groups = self.get_groups(group=group_id, typed=typed)
+        for child in child_groups:
+            for path in self.get_group_tree(child, deep=deep, typed=typed):
+                yield group_id, *path
+        for replay in self.get_replays(group_id=group_id, deep=deep, typed=typed):
+            yield group_id, replay
+
+    def download_replay(self, replay_id: str, path: str):
         """
         Download a replay file.
 
         :param replay_id: the replay id.
-        :param folder: the folder to download into.
+        :param path: the path to download the replay to. Can be a file path or a directory.
         """
         r = self._request(f"/replays/{replay_id}/file", "GET")
-        with open(f"{folder}/{replay_id}.replay", "wb") as f:
-            for ch in r:
-                f.write(ch)
+        if os.path.isdir(path):
+            # If path is a directory, use the replay id as the filename
+            filename = f"{replay_id}.replay"
+            path = os.path.join(path, filename)
+        with open(path, "wb") as f:
+            f.write(r.content)
 
-    def download_group(self, group_id: str, folder: str, recursive=True):
+    def download_group(self, group_id: str, folder: str, *, keep_tree_structure=True):
         """
         Download an entire group.
 
         :param group_id: the base group id.
         :param folder: the folder in which to create the group folder.
-        :param recursive: whether to create new folders for child groups.
+        :param keep_tree_structure: whether to create new folders for child groups.
         """
         folder = os.path.join(folder, group_id)
-        if recursive:
+        if keep_tree_structure:
             os.makedirs(folder, exist_ok=True)
             for child_group in self.get_groups(group=group_id):
-                self.download_group(child_group["id"], folder, True)
+                self.download_group(child_group["id"], folder, keep_tree_structure=True)
             for replay in self.get_replays(group_id=group_id):
                 self.download_replay(replay["id"], folder)
         else:
@@ -429,9 +503,9 @@ class BallchasingApi:
         """
 
         if isinstance(replay, str):
-            replay = self.get_replay(replay)
+            replay = self.get_replay(replay, typed=False)
         elif isinstance(replay, dict) and "title" not in replay:
-            replay = self.get_replay(replay["id"])
+            replay = self.get_replay(replay["id"], typed=False)
 
         stats = parse_replay_stats(replay)
         return stats
