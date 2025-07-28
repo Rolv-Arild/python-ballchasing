@@ -74,6 +74,7 @@ for group in groups:
     api.download_replay(replay_id=replay["id"], folder="/path/to/destination/")  # You could also download like this
 ```
 
+---
 Additionally, there's the option to put responses (replays, groups) into typed objects for better type hinting and validation.
 It also attempts to fill in missing variables not returned by ballchasing (e.g. if a team has 0 goals they won't have a "goal" entry in the response)
 The classes can also be found under the `typing` folder and used as a reference for what the API returns.
