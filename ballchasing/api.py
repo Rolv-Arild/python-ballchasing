@@ -155,6 +155,8 @@ class BallchasingApi:
                     # Gateway Timeout, retry
                     time.sleep(5)
                     continue
+                else:
+                    raise e
 
             batch = d["list"][:request_count]
             yield from batch
