@@ -9,7 +9,10 @@ def to_rfc3339(dt: Optional[datetime]):
     elif isinstance(dt, str):
         return dt
     elif isinstance(dt, datetime):
-        return dt.isoformat("T") + "Z"
+        s = dt.isoformat("T")
+        if dt.utcoffset() is None:
+            s += "Z"
+        return s
     else:
         raise ValueError("Date must be either string or datetime")
 
@@ -22,6 +25,7 @@ def from_rfc3339(s: str):
     try:
         dt = datetime.fromisoformat(s)
     except ValueError:
+        # Handle cases with sub-second precision and timezone
         dt = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f%z")
     return dt
 

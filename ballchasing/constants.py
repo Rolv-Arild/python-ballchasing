@@ -1,20 +1,22 @@
-from typing import Literal, get_args, AnyStr, Union
-
-AnyPlaylist = Union[
-    AnyStr,
-    Literal[
-        "unranked-duels", "unranked-doubles", "unranked-standard", "unranked-chaos",
-        "private", "season", "offline", "local-lobby",
-        "ranked-duels", "ranked-doubles", "ranked-solo-standard", "ranked-standard",
-        "snowday", "rocketlabs", "hoops", "rumble", "tournament", "dropshot",
-        "ranked-hoops", "ranked-rumble", "ranked-dropshot", "ranked-snowday",
-        "dropshot-rumble", "heatseeker", "gridiron", "spooky-cube"
-    ]
-]
+from typing import Literal, get_args, AnyStr, Union, TypeAlias, TypeVar, Sequence
 
 
 def _get_literals(type_):
     return get_args(get_args(type_)[1])
+
+
+T = TypeVar('T')
+OneOrMore: TypeAlias = T | Sequence[T]
+NoneOrMore: TypeAlias = OneOrMore[T] | None
+
+AnyPlaylist: TypeAlias = str | Literal[
+    "unranked-duels", "unranked-doubles", "unranked-standard", "unranked-chaos",
+    "private", "season", "offline", "local-lobby",
+    "ranked-duels", "ranked-doubles", "ranked-solo-standard", "ranked-standard",
+    "snowday", "rocketlabs", "hoops", "rumble", "tournament", "dropshot",
+    "ranked-hoops", "ranked-rumble", "ranked-dropshot", "ranked-snowday",
+    "dropshot-rumble", "heatseeker", "gridiron", "spooky-cube"
+]
 
 
 class Playlist:
@@ -31,20 +33,17 @@ class Playlist:
     MISC = (PRIVATE, SEASON, OFFLINE, LOCAL_LOBBY)
 
 
-AnyRank = Union[
-    AnyStr,
-    Literal[
-        "unranked",
-        "bronze-1", "bronze-2", "bronze-3",
-        "silver-1", "silver-2", "silver-3",
-        "gold-1", "gold-2", "gold-3",
-        "platinum-1", "platinum-2", "platinum-3",
-        "diamond-1", "diamond-2", "diamond-3",
-        "champion-1", "champion-2", "champion-3",
-        "grand-champion",  # Legacy. Seems to be interchangeable with "grand-champion-1"
-        "grand-champion-1", "grand-champion-2", "grand-champion-3",
-        "supersonic-legend"
-    ],
+AnyRank: TypeAlias = str | Literal[
+    "unranked",
+    "bronze-1", "bronze-2", "bronze-3",
+    "silver-1", "silver-2", "silver-3",
+    "gold-1", "gold-2", "gold-3",
+    "platinum-1", "platinum-2", "platinum-3",
+    "diamond-1", "diamond-2", "diamond-3",
+    "champion-1", "champion-2", "champion-3",
+    "grand-champion",  # Legacy. Seems to be interchangeable with "grand-champion-1"
+    "grand-champion-1", "grand-champion-2", "grand-champion-3",
+    "supersonic-legend"
 ]
 
 
@@ -70,13 +69,10 @@ class Rank:
     GRAND_CHAMPION = (GRAND_CHAMPION_1, GRAND_CHAMPION_2, GRAND_CHAMPION_3)
 
 
-AnySeason = Union[
-    AnyStr,
-    Literal[
-        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
-        "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9",
-        "f10", "f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19"
-    ]
+AnySeason: TypeAlias = str | Literal[
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9",
+    "f10", "f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19"
 ]
 
 
@@ -93,56 +89,56 @@ class Season:
     FREE_TO_PLAY = ALL[14:]
 
 
-AnyMatchResult = Union[AnyStr, Literal["win", "loss"]]
+AnyMatchResult: TypeAlias = str | Literal["win", "loss"]
 
 
 class MatchResult:
     WIN, LOSS = _get_literals(AnyMatchResult)
 
 
-AnyReplaySortBy = Union[AnyStr, Literal["replay-date", "upload-date"]]
+AnyReplaySortBy: TypeAlias = str | Literal["replay-date", "upload-date"]
 
 
 class ReplaySortBy:
     REPLAY_DATE, UPLOAD_DATE = _get_literals(AnyReplaySortBy)
 
 
-AnyGroupSortBy = Union[AnyStr, Literal["created", "name"]]
+AnyGroupSortBy: TypeAlias = str | Literal["created", "name"]
 
 
 class GroupSortBy:
     CREATED, NAME = _get_literals(AnyGroupSortBy)
 
 
-AnySortDir = Union[AnyStr, Literal["asc", "desc"]]
+AnySortDir: TypeAlias = str | Literal["asc", "desc"]
 
 
 class SortDir:
     ASCENDING, DESCENDING = ASC, DESC = _get_literals(AnySortDir)
 
 
-AnyVisibility = Union[AnyStr, Literal["public", "unlisted", "private"]]
+AnyVisibility: TypeAlias = str | Literal["public", "unlisted", "private"]
 
 
 class Visibility:
     PUBLIC, UNLISTED, PRIVATE = _get_literals(AnyVisibility)
 
 
-AnyPlayerIdentification = Union[AnyStr, Literal["by-id", "by-name"]]
+AnyPlayerIdentification: TypeAlias = str | Literal["by-id", "by-name"]
 
 
 class PlayerIdentification:
     BY_ID, BY_NAME = _get_literals(AnyPlayerIdentification)
 
 
-AnyTeamIdentification = Union[AnyStr, Literal["by-distinct-players", "by-player-clusters"]]
+AnyTeamIdentification: TypeAlias = str | Literal["by-distinct-players", "by-player-clusters"]
 
 
 class TeamIdentification:
     BY_DISTINCT_PLAYERS, BY_PLAYER_CLUSTERS = _get_literals(AnyTeamIdentification)
 
 
-AnyMap = Union[AnyStr, Literal[
+AnyMap: TypeAlias = str | Literal[
     "arc_darc_p", "arc_p", "arc_standard_p", "bb_p", "beach_night_grs_p", "beach_night_p", "beach_p", "beachvolley",
     "chn_stadium_day_p", "chn_stadium_p", "cs_day_p", "cs_hw_p", "cs_p", "eurostadium_dusk_p", "eurostadium_night_p",
     "eurostadium_p", "eurostadium_rainy_p", "eurostadium_snownight_p", "farm_grs_p", "farm_hw_p", "farm_night_p",
@@ -159,7 +155,7 @@ AnyMap = Union[AnyStr, Literal[
     "underwater_grs_p", "underwater_p", "utopiastadium_dusk_p", "utopiastadium_lux_p", "utopiastadium_p",
     "utopiastadium_snow_p", "wasteland_grs_p", "wasteland_night_p", "wasteland_night_s_p", "wasteland_p",
     "wasteland_s_p", "woods_night_p", "woods_p"
-]]
+]
 
 
 class Map:

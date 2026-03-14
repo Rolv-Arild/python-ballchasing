@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "python-ballchasing"
-version = "0.4.1"
+version = "0.4.2"
 authors = [
     { name = "Rolv-Arild Braaten", email = "rolv_arild@hotmail.com" },
 ]
 description = "A Python wrapper around the Ballchasing API"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT License" }
 classifiers = [
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
