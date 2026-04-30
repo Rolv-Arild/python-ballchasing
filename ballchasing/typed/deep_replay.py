@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseReplay, BaseTeam
+from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseReplay, BaseTeam, _BaseModel
 
 
 @dataclass
-class CameraSettings:
+class CameraSettings(_BaseModel):
     fov: int = 0
     height: int = 0
     pitch: int = 0
@@ -16,13 +16,13 @@ class CameraSettings:
 
 
 @dataclass
-class TeamBallStatsDR:
+class TeamBallStatsDR(_BaseModel):
     possession_time: float = 0.0
     time_in_side: float = 0.0
 
 
 @dataclass
-class TeamCoreStatsDR:
+class TeamCoreStatsDR(_BaseModel):
     shots: int = 0
     shots_against: int = 0
     goals: int = 0
@@ -34,7 +34,7 @@ class TeamCoreStatsDR:
 
 
 @dataclass
-class PlayerCoreStatsDR:
+class PlayerCoreStatsDR(_BaseModel):
     shots: int = 0
     shots_against: int = 0
     goals: int = 0
@@ -47,7 +47,7 @@ class PlayerCoreStatsDR:
 
 
 @dataclass
-class TeamBoostStatsDR:
+class TeamBoostStatsDR(_BaseModel):
     bpm: int = 0
     bcpm: float = 0.0
     avg_amount: float = 0.0
@@ -73,7 +73,7 @@ class TeamBoostStatsDR:
 
 
 @dataclass
-class PlayerBoostStatsDR:
+class PlayerBoostStatsDR(_BaseModel):
     bpm: int = 0
     bcpm: float = 0.0
     avg_amount: float = 0.0
@@ -105,7 +105,7 @@ class PlayerBoostStatsDR:
 
 
 @dataclass
-class TeamMovementStatsDR:
+class TeamMovementStatsDR(_BaseModel):
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
     time_boost_speed: float = 0.0
@@ -118,7 +118,7 @@ class TeamMovementStatsDR:
 
 
 @dataclass
-class PlayerMovementStatsDR:
+class PlayerMovementStatsDR(_BaseModel):
     avg_speed: int = 0
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
@@ -140,7 +140,7 @@ class PlayerMovementStatsDR:
 
 
 @dataclass
-class TeamPositioningStatsDR:
+class TeamPositioningStatsDR(_BaseModel):
     time_defensive_third: float = 0.0
     time_neutral_third: float = 0.0
     time_offensive_third: float = 0.0
@@ -151,7 +151,7 @@ class TeamPositioningStatsDR:
 
 
 @dataclass
-class PlayerPositioningStatsDR:
+class PlayerPositioningStatsDR(_BaseModel):
     avg_distance_to_ball: int = 0
     avg_distance_to_ball_possession: int = 0
     avg_distance_to_ball_no_possession: int = 0
@@ -182,19 +182,19 @@ class PlayerPositioningStatsDR:
 
 
 @dataclass
-class TeamDemoStatsDR:
+class TeamDemoStatsDR(_BaseModel):
     inflicted: int = 0
     taken: int = 0
 
 
 @dataclass
-class PlayerDemoStatsDR:
+class PlayerDemoStatsDR(_BaseModel):
     inflicted: int = 0
     taken: int = 0
 
 
 @dataclass
-class TeamStatsDR(_DictToTypeMixin):
+class TeamStatsDR(_BaseModel, _DictToTypeMixin):
     ball: Optional[TeamBallStatsDR] = None
     core: Optional[TeamCoreStatsDR] = None
     boost: Optional[TeamBoostStatsDR] = None
@@ -204,7 +204,7 @@ class TeamStatsDR(_DictToTypeMixin):
 
 
 @dataclass
-class PlayerStatsDR(_DictToTypeMixin):
+class PlayerStatsDR(_BaseModel, _DictToTypeMixin):
     core: Optional[PlayerCoreStatsDR] = None
     boost: Optional[PlayerBoostStatsDR] = None
     movement: Optional[PlayerMovementStatsDR] = None
@@ -237,7 +237,7 @@ class TeamDR(BaseTeam):
 
 
 @dataclass
-class Server:
+class Server(_BaseModel):
     name: str = ""
     region: str = ""
 

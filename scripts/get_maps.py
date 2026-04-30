@@ -132,3 +132,16 @@ print_maps(uncertain_maps)
 print_maps(non_standard_maps)
 print_maps({**non_standard_maps, **uncertain_maps})
 print("Done!")
+
+# Check if current constants agree
+from ballchasing.constants import Map
+
+if set(m.lower() for m in Map.ALL) != set(all_maps.keys()):
+    print("Current Map constants do not match the discovered maps!")
+    print("Missing from Map.ALL:", set(all_maps.keys()) - set(m.lower() for m in Map.ALL))
+if set(m.lower() for m in Map.STANDARD_MAPS) != set(standard_maps.keys()):
+    print("Current Map.STANDARD constants do not match the discovered standard maps!")
+    print("Missing from Map.STANDARD:", set(standard_maps.keys()) - set(m.lower() for m in Map.STANDARD_MAPS))
+if set(m.lower() for m in Map.NON_STANDARD_MAPS) != set(non_standard_maps.keys()):
+    print("Current Map.NON_STANDARD constants do not match the discovered non-standard maps!")
+    print("Missing from Map.NON_STANDARD:", set(non_standard_maps.keys()) - set(m.lower() for m in Map.NON_STANDARD_MAPS))
