@@ -3,7 +3,32 @@ from datetime import datetime
 from functools import total_ordering
 from typing import get_args, Optional, List
 
-from ballchasing.util import from_rfc3339
+from ballchasing.util.dates import from_rfc3339, to_rfc3339
+
+
+class _BaseModel:
+    """
+    Base model class for all dataclasses in this module.
+    """
+
+    def to_dict(self):
+        """
+        Convert (back) to a dict. Not a perfect recreation.
+        """
+        result = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if isinstance(value, _BaseModel):
+                result[field.name] = value.to_dict()
+            elif isinstance(value, list) and len(value) > 0:
+                result[field.name] = [item.to_dict() if isinstance(item, _BaseModel) else item for item in value]
+            elif isinstance(value, datetime):
+                # Convert datetime objects to rfc3339 formatted strings
+                result[field.name] = to_rfc3339(value)
+            elif bool(value):
+                # Only include non-empty values, to match the API's behavior
+                result[field.name] = value
+        return result
 
 
 class _DictToTypeMixin:
@@ -37,7 +62,7 @@ class _DictToTypeMixin:
 
 
 @dataclass
-class User:
+class User(_BaseModel):
     steam_id: str = ""
     name: str = ""
     profile_url: str = ""
@@ -50,7 +75,7 @@ class User:
 
 
 @dataclass
-class PlayerID:
+class PlayerID(_BaseModel):
     platform: str = ""
     id: str = ""
     player_number: int = 0
@@ -63,7 +88,7 @@ class PlayerID:
 
 @total_ordering
 @dataclass
-class Rank:
+class Rank(_BaseModel):
     tier: int = 0
     division: int = 0
     name: str = ""
@@ -111,7 +136,7 @@ class Rank:
 
 
 @dataclass
-class BasePlayer(_DictToTypeMixin):
+class BasePlayer(_BaseModel, _DictToTypeMixin):
     start_time: float = 0.0
     end_time: float = 0.0
     name: str = ""
@@ -130,7 +155,7 @@ class BasePlayer(_DictToTypeMixin):
 
 
 @dataclass
-class BaseTeam(_DictToTypeMixin):
+class BaseTeam(_BaseModel, _DictToTypeMixin):
     name: str = ""
     # Further specified in subclasses, needed for methods:
     players: List[BasePlayer] = field(default_factory=list)
@@ -149,7 +174,7 @@ class BaseTeam(_DictToTypeMixin):
 
 
 @dataclass
-class BasicGroup:  # Shared between replays and shallow/deep groups
+class BasicGroup(_BaseModel):  # Shared between replays and shallow/deep groups
     id: str = ""
     name: str = ""
     link: str = ""
@@ -169,7 +194,7 @@ class BaseGroup(BasicGroup, _DictToTypeMixin):  # Shared between shallow and dee
 
 
 @dataclass
-class BaseReplay(_DictToTypeMixin):  # Shared between shallow and deep replays
+class BaseReplay(_BaseModel, _DictToTypeMixin):  # Shared between shallow and deep replays
     id: str = ""
     link: str = ""
     rocket_league_id: str = ""

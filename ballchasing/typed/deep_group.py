@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from ballchasing.typed.shared import _DictToTypeMixin, User, BaseGroup
+from ballchasing.typed.shared import _DictToTypeMixin, User, BaseGroup, _BaseModel
 
 
 @dataclass
@@ -15,7 +15,7 @@ class CreatorDG(User):
 
 
 @dataclass
-class PlayerCumulativeCoreStatsDG:
+class PlayerCumulativeCoreStatsDG(_BaseModel):
     shots: int = 0
     shots_against: int = 0
     goals: int = 0
@@ -28,7 +28,7 @@ class PlayerCumulativeCoreStatsDG:
 
 
 @dataclass
-class PlayerCumulativeBoostStatsDG:
+class PlayerCumulativeBoostStatsDG(_BaseModel):
     bpm: float = 0.0
     bcpm: float = 0.0
     avg_amount: float = 0.0
@@ -60,7 +60,7 @@ class PlayerCumulativeBoostStatsDG:
 
 
 @dataclass
-class PlayerCumulativeMovementStatsDG:
+class PlayerCumulativeMovementStatsDG(_BaseModel):
     avg_speed: float = 0.0
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
@@ -82,7 +82,7 @@ class PlayerCumulativeMovementStatsDG:
 
 
 @dataclass
-class PlayerCumulativePositioningStatsDG:
+class PlayerCumulativePositioningStatsDG(_BaseModel):
     avg_distance_to_ball: float = 0.0
     avg_distance_to_ball_possession: float = 0.0
     avg_distance_to_ball_no_possession: float = 0.0
@@ -108,13 +108,13 @@ class PlayerCumulativePositioningStatsDG:
 
 
 @dataclass
-class PlayerCumulativeDemoStatsDG:
+class PlayerCumulativeDemoStatsDG(_BaseModel):
     inflicted: int = 0
     taken: int = 0
 
 
 @dataclass
-class PlayerCumulativeStatsDG(_DictToTypeMixin):
+class PlayerCumulativeStatsDG(_BaseModel, _DictToTypeMixin):
     games: int = 0
     wins: int = 0
     win_percentage: float = 0
@@ -127,7 +127,7 @@ class PlayerCumulativeStatsDG(_DictToTypeMixin):
 
 
 @dataclass
-class PlayerAverageCoreStatsDG:
+class PlayerAverageCoreStatsDG(_BaseModel):
     shots: float = 0.0
     shots_against: int = 0
     goals: float = 0.0
@@ -140,7 +140,7 @@ class PlayerAverageCoreStatsDG:
 
 
 @dataclass
-class PlayerAverageBoostStatsDG:
+class PlayerAverageBoostStatsDG(_BaseModel):
     bpm: float = 0.0
     bcpm: float = 0.0
     avg_amount: float = 0.0
@@ -172,7 +172,7 @@ class PlayerAverageBoostStatsDG:
 
 
 @dataclass
-class PlayerAverageMovementStatsDG:
+class PlayerAverageMovementStatsDG(_BaseModel):
     avg_speed: float = 0.0
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
@@ -194,7 +194,7 @@ class PlayerAverageMovementStatsDG:
 
 
 @dataclass
-class PlayerAveragePositioningStatsDG:
+class PlayerAveragePositioningStatsDG(_BaseModel):
     avg_distance_to_ball: float = 0.0
     avg_distance_to_ball_possession: float = 0.0
     avg_distance_to_ball_no_possession: float = 0.0
@@ -220,13 +220,13 @@ class PlayerAveragePositioningStatsDG:
 
 
 @dataclass
-class PlayerAverageDemoStatsDG:
+class PlayerAverageDemoStatsDG(_BaseModel):
     inflicted: float = 0.0
     taken: float = 0.0
 
 
 @dataclass
-class PlayerAverageStatsDG(_DictToTypeMixin):
+class PlayerAverageStatsDG(_BaseModel, _DictToTypeMixin):
     core: Optional[PlayerAverageCoreStatsDG] = None
     boost: Optional[PlayerAverageBoostStatsDG] = None
     movement: Optional[PlayerAverageMovementStatsDG] = None
@@ -235,7 +235,7 @@ class PlayerAverageStatsDG(_DictToTypeMixin):
 
 
 @dataclass
-class TeamCumulativeCoreStatsDG:
+class TeamCumulativeCoreStatsDG(_BaseModel):
     shots: int = 0
     shots_against: int = 0
     goals: int = 0
@@ -247,7 +247,7 @@ class TeamCumulativeCoreStatsDG:
 
 
 @dataclass
-class TeamCumulativeBoostStatsDG:
+class TeamCumulativeBoostStatsDG(_BaseModel):
     amount_collected: int = 0
     amount_stolen: int = 0
     amount_collected_big: int = 0
@@ -272,7 +272,7 @@ class TeamCumulativeBoostStatsDG:
 
 
 @dataclass
-class TeamCumulativeMovementStatsDG:
+class TeamCumulativeMovementStatsDG(_BaseModel):
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
     time_boost_speed: float = 0.0
@@ -285,7 +285,7 @@ class TeamCumulativeMovementStatsDG:
 
 
 @dataclass
-class TeamCumulativePositioningStatsDG:
+class TeamCumulativePositioningStatsDG(_BaseModel):
     time_defensive_third: float = 0.0
     time_neutral_third: float = 0.0
     time_offensive_third: float = 0.0
@@ -299,13 +299,13 @@ class TeamCumulativePositioningStatsDG:
 
 
 @dataclass
-class TeamCumulativeDemoStatsDG:
+class TeamCumulativeDemoStatsDG(_BaseModel):
     inflicted: int = 0
     taken: int = 0
 
 
 @dataclass
-class TeamCumulativeStatsDG(_DictToTypeMixin):
+class TeamCumulativeStatsDG(_BaseModel, _DictToTypeMixin):
     games: int = 0
     wins: int = 0
     win_percentage: float = 0
@@ -318,7 +318,7 @@ class TeamCumulativeStatsDG(_DictToTypeMixin):
 
 
 @dataclass
-class TeamAverageCoreStatsDG:
+class TeamAverageCoreStatsDG(_BaseModel):
     shots: float = 0.0
     shots_against: int = 0
     goals: int = 0
@@ -330,7 +330,7 @@ class TeamAverageCoreStatsDG:
 
 
 @dataclass
-class TeamAverageBoostStatsDG:
+class TeamAverageBoostStatsDG(_BaseModel):
     bpm: int = 0
     bcpm: float = 0.0
     avg_amount: float = 0.0
@@ -358,7 +358,7 @@ class TeamAverageBoostStatsDG:
 
 
 @dataclass
-class TeamAverageMovementStatsDG:
+class TeamAverageMovementStatsDG(_BaseModel):
     total_distance: float = 0.0
     time_supersonic_speed: float = 0.0
     time_boost_speed: float = 0.0
@@ -371,7 +371,7 @@ class TeamAverageMovementStatsDG:
 
 
 @dataclass
-class TeamAveragePositioningStatsDG:
+class TeamAveragePositioningStatsDG(_BaseModel):
     time_defensive_third: float = 0.0
     time_neutral_third: float = 0.0
     time_offensive_third: float = 0.0
@@ -385,13 +385,13 @@ class TeamAveragePositioningStatsDG:
 
 
 @dataclass
-class TeamAverageDemoStatsDG:
+class TeamAverageDemoStatsDG(_BaseModel):
     inflicted: float = 0.0
     taken: float = 0.0
 
 
 @dataclass
-class TeamAverageStatsDG(_DictToTypeMixin):
+class TeamAverageStatsDG(_BaseModel, _DictToTypeMixin):
     core: Optional[TeamAverageCoreStatsDG] = None
     boost: Optional[TeamAverageBoostStatsDG] = None
     movement: Optional[TeamAverageMovementStatsDG] = None
@@ -400,7 +400,7 @@ class TeamAverageStatsDG(_DictToTypeMixin):
 
 
 @dataclass
-class PlayerDG:
+class PlayerDG(_BaseModel):
     platform: str = ""
     id: str = ""
     name: str = ""
@@ -418,7 +418,7 @@ class PlayerWithStatsDG(PlayerDG, _DictToTypeMixin):
 
 
 @dataclass
-class TeamDG(_DictToTypeMixin):
+class TeamDG(_BaseModel, _DictToTypeMixin):
     name: str = ""
     players: List[PlayerDG] = field(default_factory=list)
     cumulative: Optional[TeamCumulativeStatsDG] = None

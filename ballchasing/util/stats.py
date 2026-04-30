@@ -1,36 +1,13 @@
 from datetime import datetime
+from functools import cache
 from pathlib import Path
-from typing import Optional
+
+from .dates import to_rfc3339
+from .replays import get_pid
 
 
-def to_rfc3339(dt: Optional[datetime]):
-    if dt is None:
-        return dt
-    elif isinstance(dt, str):
-        return dt
-    elif isinstance(dt, datetime):
-        s = dt.isoformat("T")
-        if dt.utcoffset() is None:
-            s += "Z"
-        return s
-    else:
-        raise ValueError("Date must be either string or datetime")
-
-
-def from_rfc3339(s: str):
-    """
-    Convert an RFC3339 formatted string to a datetime object.
-    """
-    s = s.replace("Z", "+00:00")
-    try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        # Handle cases with sub-second precision and timezone
-        dt = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f%z")
-    return dt
-
-
-def _get_stats_info():
+@cache
+def get_stats_info():
     cur_path = Path(__file__).parent
     with open(cur_path / "stats_info.tsv") as stats_info:
         stats_info = [line.strip().split("\t") for line in stats_info]
@@ -53,9 +30,6 @@ def _get_stats_info():
             stat_info[k] = v
         stats[stat_info["name"]] = stat_info
     return stats
-
-
-stats_info = _get_stats_info()
 
 
 def get_value(replay, path, dtype, *path_args):
@@ -82,7 +56,7 @@ def parse_replay_stats(replay: dict):
     team_stats = {}
     player_stats = {}
 
-    for stat in stats_info.values():
+    for stat in get_stats_info().values():
         is_replay = stat["is_replay"]
         is_team = stat["is_team"]
         is_player = stat["is_player"]
@@ -103,8 +77,7 @@ def parse_replay_stats(replay: dict):
         if is_player:
             for team in "blue", "orange":
                 for n, p in enumerate(replay[team]["players"]):
-                    pid = p["id"]
-                    pid = pid["platform"] + ":" + pid["id"]
+                    pid = get_pid(p)
                     ps = player_stats.setdefault(pid, {})
                     v = get_value(replay, path, dtype, team, n)
                     ps[name] = v

@@ -1,5 +1,6 @@
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO, Iterator
@@ -11,7 +12,9 @@ from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyR
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
 from .typed.shared import BaseGroup, BasicGroup
-from .util import to_rfc3339, parse_replay_stats
+from .util.dates import to_rfc3339
+from .util.iterators import deduplicate as deduplicator
+from .util.stats import parse_replay_stats
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
@@ -143,24 +146,41 @@ class BallchasingApi:
         self._ping_result = result
         return result
 
-    def _iterable_from_request(self, url, params):
-        # Shared by get_replays and get_groups
+    def _iterable_from_request(self, url, params, prefetch=True):
+        # Shared by get_replays and get_groups.
+        # When prefetch=True, the next page is requested in a background
+        # thread *before* yielding, so network I/O overlaps with the
+        # consumer processing items.  When prefetch=False (e.g. deep mode
+        # where the consumer also makes API calls), the next request is
+        # submitted *after* yielding to avoid doubling the request rate.
         remaining = params["count"]
-        # return_length = True
-        while remaining > 0:
-            request_count = min(remaining, 200)
-            params["count"] = request_count
-            d = self._request(url, "GET", params=params).json()
 
-            batch = d["list"][:request_count]
-            yield from batch
+        def fetch_page(p):
+            return self._request(url, "GET", params=p).json()
 
-            if "next" not in d:
-                break
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            params["count"] = min(remaining, 200)
+            future = executor.submit(fetch_page, dict(params))
 
-            next_url = d["next"]
-            remaining -= len(batch)
-            params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
+            while remaining > 0:
+                d = future.result()
+                batch = d["list"][:min(remaining, 200)]
+                remaining -= len(batch)
+
+                has_next = "next" in d and remaining > 0
+                if has_next:
+                    next_url = d["next"]
+                    params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
+                    params["count"] = min(remaining, 200)
+                    if prefetch:
+                        future = executor.submit(fetch_page, dict(params))
+
+                yield from batch
+
+                if not has_next:
+                    break
+                if not prefetch:
+                    future = executor.submit(fetch_page, dict(params))
 
     def get_replays(
             self,
@@ -186,6 +206,7 @@ class BallchasingApi:
             sort_dir: AnySortDir = SortDir.DESCENDING,
             deep: bool = False,
             typed: bool | None = None,
+            deduplicate: bool = False,
     ) -> Iterator[dict | ShallowReplay | DeepReplay]:
         """
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
@@ -220,12 +241,13 @@ class BallchasingApi:
         :param sort_dir: sort direction
         :param deep: whether to get full stats for each replay (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
+        :param deduplicate: whether to deduplicate replays that seem to be the same game.
         :return: an iterator over the replays returned by the API.
         """
         url = f"{self.base_url}/replays"
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
-                  "pro": str(pro) if isinstance(pro, bool) else pro, "uploader": uploader, "group": group_id,
+                  "pro": str(pro).lower() if isinstance(pro, bool) else pro, "uploader": uploader, "group": group_id,
                   "map": map_id,
                   "created-before": to_rfc3339(created_before), "created-after": to_rfc3339(created_after),
                   "replay-date-after": to_rfc3339(replay_after), "replay-date-before": to_rfc3339(replay_before),
@@ -234,11 +256,17 @@ class BallchasingApi:
         if typed is None:
             typed = self.typed
 
-        iterator = self._iterable_from_request(url, params)
+        iterator = self._iterable_from_request(url, params, prefetch=not deep)
         if deep:
-            iterator = (self.get_replay(r["id"], typed=typed) for r in iterator)
-        elif typed:
-            iterator = (ShallowReplay(**r) for r in iterator)
+            iterator = (self.get_replay(r["id"]) for r in iterator)
+        if deduplicate:
+            # Deep replays have match and replay IDs to deduplicate with. For shallow replays we check dates.
+            iterator = deduplicator(iterator, check_dates=not deep)
+        if typed:
+            if deep:
+                iterator = (DeepReplay(**r) for r in iterator)
+            else:
+                iterator = (ShallowReplay(**r) for r in iterator)
         yield from iterator
 
     def get_replay(self, replay_id: str, *, typed: bool | None = None) -> dict | DeepReplay:
@@ -307,7 +335,7 @@ class BallchasingApi:
             sort_by: AnyGroupSortBy = GroupSortBy.CREATED,
             sort_dir: AnySortDir = SortDir.DESCENDING,
             deep: bool = False,
-            typed: bool = None,
+            typed: bool | None = None,
     ) -> Iterator[dict | ShallowGroup | DeepGroup]:
         """
         This endpoint lets you filter and retrieve replay groups.
@@ -331,7 +359,7 @@ class BallchasingApi:
         url = f"{self.base_url}/groups/"
         params = {"name": name, "creator": creator, "group": group, "created-before": to_rfc3339(created_before),
                   "created-after": to_rfc3339(created_after), "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
-        iterator = self._iterable_from_request(url, params)
+        iterator = self._iterable_from_request(url, params, prefetch=not deep)
         if typed is None:
             typed = self.typed
         if deep:
@@ -420,8 +448,7 @@ class BallchasingApi:
         :param typed: whether to return a typed object (default is self.typed).
         :return: an iterator over all the replays in the group.
         """
-        for path in self.get_group_tree(group, deep=deep, typed=typed):
-            group, replay = path
+        for path, replay in self.get_group_tree(group, deep=deep, typed=typed):
             yield replay
 
     def get_group_tree(
@@ -430,25 +457,27 @@ class BallchasingApi:
             *,
             deep: bool = False,
             typed: bool | None = None
-    ):
+    ) -> Iterator[tuple[list[str], dict | ShallowReplay | DeepReplay]]:
         """
-        Finds all replays in a group, and includes the groups leading up to the replays.
+        Finds all replays in a group, and includes the group path leading up to each replay.
+
         :param group: the group id or a group dict.
         :param deep: whether to get full stats for each replay and group (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
+        :return: an iterator of (path, replay) tuples, where path is a list of group ids.
         """
         if isinstance(group, str):
-            group = self.get_group(group)
-        if isinstance(group, BasicGroup):
+            group_id = group
+        elif isinstance(group, BasicGroup):
             group_id = group.id
         else:
             group_id = group["id"]
         child_groups = self.get_groups(group=group_id, typed=typed)
         for child in child_groups:
-            for path in self.get_group_tree(child, deep=deep, typed=typed):
-                yield group_id, *path
+            for path, replay in self.get_group_tree(child, deep=deep, typed=typed):
+                yield [group_id] + path, replay
         for replay in self.get_replays(group_id=group_id, deep=deep, typed=typed):
-            yield group_id, replay
+            yield [group_id], replay
 
     def download_replay(self, replay_id: str, path: str):
         """
