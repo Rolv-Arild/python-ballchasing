@@ -207,6 +207,7 @@ class BallchasingApi:
             deep: bool = False,
             typed: bool | None = None,
             deduplicate: bool = False,
+            disable_prefetch: bool | None = None,
     ) -> Iterator[dict | ShallowReplay | DeepReplay]:
         """
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
@@ -242,6 +243,7 @@ class BallchasingApi:
         :param deep: whether to get full stats for each replay (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
         :param deduplicate: whether to deduplicate replays that seem to be the same game.
+        :param disable_prefetch: whether to disable prefetching replays.
         :return: an iterator over the replays returned by the API.
         """
         url = f"{self.base_url}/replays"
@@ -256,7 +258,10 @@ class BallchasingApi:
         if typed is None:
             typed = self.typed
 
-        iterator = self._iterable_from_request(url, params, prefetch=not deep)
+        if disable_prefetch is None:
+            disable_prefetch = deep
+
+        iterator = self._iterable_from_request(url, params, prefetch=not disable_prefetch)
         if deep:
             iterator = (self.get_replay(r["id"]) for r in iterator)
         if deduplicate:
@@ -336,6 +341,7 @@ class BallchasingApi:
             sort_dir: AnySortDir = SortDir.DESCENDING,
             deep: bool = False,
             typed: bool | None = None,
+            disable_prefetch: bool | None = None,
     ) -> Iterator[dict | ShallowGroup | DeepGroup]:
         """
         This endpoint lets you filter and retrieve replay groups.
@@ -354,12 +360,17 @@ class BallchasingApi:
         :param sort_dir: Sort direction.
         :param deep: whether to get full stats for each group (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
+        :param disable_prefetch: whether to disable prefetching.
         :return: an iterator over the groups returned by the API.
         """
         url = f"{self.base_url}/groups/"
         params = {"name": name, "creator": creator, "group": group, "created-before": to_rfc3339(created_before),
                   "created-after": to_rfc3339(created_after), "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
-        iterator = self._iterable_from_request(url, params, prefetch=not deep)
+
+        if disable_prefetch is None:
+            disable_prefetch = deep
+
+        iterator = self._iterable_from_request(url, params, prefetch=not disable_prefetch)
         if typed is None:
             typed = self.typed
         if deep:
