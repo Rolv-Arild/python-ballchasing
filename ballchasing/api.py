@@ -12,6 +12,7 @@ from requests.exceptions import ConnectionError, Timeout
 
 from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyReplaySortBy, AnySortDir, \
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
+from ballchasing.rate_limit import RateLimiter, RateLimitCategory, resolve_category, rate_limited
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
 from .typed.shared import BaseGroup, BasicGroup
 from .util.dates import to_rfc3339
@@ -45,6 +46,7 @@ class BallchasingApi:
             base_url: str | None = None,
             do_initial_ping: bool = True,
             typed: bool = False,
+            proactive_rate_limit: bool = False,
     ):
         """
 
@@ -52,6 +54,7 @@ class BallchasingApi:
         :param sleep_time_on_rate_limit: seconds to wait after being rate limited.
                                          Default value is calculated depending on patron type.
         :param print_on_rate_limit: whether or not to print upon rate limits.
+        :param proactive_rate_limit: whether to pace requests proactively before hitting limits.
         """
         self.auth_key = auth_key
         self._session = sessions.Session()
@@ -63,6 +66,10 @@ class BallchasingApi:
         self._sleep_time_on_rate_limit = sleep_time_on_rate_limit
         self.print_on_rate_limit = print_on_rate_limit
         self.typed = typed
+        self.rate_limiter = RateLimiter(
+            patron_type_getter=lambda: self._ping_result.get("type") if self._ping_result else None,
+            proactive=proactive_rate_limit,
+        )
 
     @property
     def sleep_time_on_rate_limit(self) -> float:
@@ -75,6 +82,21 @@ class BallchasingApi:
     @sleep_time_on_rate_limit.setter
     def sleep_time_on_rate_limit(self, value: float | None):
         self._sleep_time_on_rate_limit = value
+
+    @property
+    def last_rate_limited_at(self) -> float | None:
+        """Timestamp (time.time()) of the most recent 429 response, or None if never rate-limited."""
+        return self.rate_limiter.last_rate_limited_at
+
+    @property
+    def is_rate_limited(self) -> bool:
+        """True if the instance is currently waiting out a 429 rate-limit cooldown."""
+        return self.rate_limiter.is_rate_limited
+
+    @property
+    def rate_limit_stats(self) -> dict:
+        """Detailed rate-limiting statistics across all categories."""
+        return self.rate_limiter.get_stats()
 
     @property
     def steam_name(self):
@@ -105,6 +127,7 @@ class BallchasingApi:
             url_or_endpoint: str,
             method: str,
             allow_status_codes: tuple[int, ...] = (),
+            category: RateLimitCategory | str | None = None,
             **params
     ) -> Response:
         """
@@ -113,16 +136,22 @@ class BallchasingApi:
         :param url_or_endpoint: url or endpoint for request.
         :param method: the method to use.
         :param allow_status_codes: additional HTTP status codes to treat as successful responses.
+        :param category: rate limit category for this request.
         :param params: parameters for request (e.g. params, json, files, stream).
         :return: the request result.
         :raises ConnectionError: if the connection fails after max retries.
         :raises HTTPError: if the request fails with a status code other than 2xx, 429, or allow_status_codes.
         """
+        cat = RateLimitCategory(category) if category else resolve_category(url_or_endpoint)
         headers = {"Authorization": self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
         max_retries = 8
         retries = 0
         rate_limit_retries = 0
+
+        # Wait if global cooldown is active or if proactive pacing applies
+        self.rate_limiter.before_request(cat)
+
         while True:
             try:
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
@@ -132,20 +161,21 @@ class BallchasingApi:
                     self.rate_limit_count += 1
                     rate_limit_retries += 1
                     retry_after = r.headers.get("Retry-After", '0')
-                    retry_after = int(retry_after) if retry_after.isdigit() else None
-                    if retry_after:  # integer > 0
-                        wait_time = float(retry_after)
-                    else:
-                        base_wait = self.sleep_time_on_rate_limit or 1.0
-                        wait_time = max(base_wait, min(float(2 ** (rate_limit_retries - 1)), 60.0))
+                    retry_after = float(retry_after) if retry_after.isdigit() else None
+                    wait_time = self.rate_limiter.record_429(
+                        cat,
+                        retry_after=retry_after,
+                        fallback_sleep_time=self._sleep_time_on_rate_limit,
+                        retries=rate_limit_retries,
+                    )
 
                     if self.print_on_rate_limit:
                         logger.warning(
-                            f"Rate limited at {url} ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
+                            f"Rate limited at {url} [{cat.value}] ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
                         )
                     else:
                         logger.debug(
-                            f"Rate limited at {url} ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
+                            f"Rate limited at {url} [{cat.value}] ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
                         )
                     time.sleep(wait_time)
                 elif r.status_code in (502, 503, 504):
@@ -160,6 +190,7 @@ class BallchasingApi:
                 time.sleep(s)
                 retries += 1
 
+    @rate_limited(RateLimitCategory.PING)
     def ping(self) -> dict:
         """
         Use this API to:
@@ -170,7 +201,7 @@ class BallchasingApi:
         This method runs automatically at initialization and the steam name and id as well as patron type are stored.
         :return: ping response.
         """
-        result = self._request("/", "GET").json()
+        result = self._request("/", "GET", category=RateLimitCategory.PING).json()
         self._ping_result = result
         return result
 
@@ -186,7 +217,7 @@ class BallchasingApi:
             return
 
         def fetch_page(p):
-            return self._request(url, "GET", params=p).json()
+            return self._request(url, "GET", params=p, category=RateLimitCategory.LIST).json()
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             params["count"] = min(remaining, 200)
@@ -216,6 +247,7 @@ class BallchasingApi:
                 if not prefetch:
                     future = executor.submit(fetch_page, dict(params))
 
+    @rate_limited(RateLimitCategory.LIST)
     def get_replays(
             self,
             *,
@@ -308,6 +340,7 @@ class BallchasingApi:
                 iterator = (ShallowReplay(**r) for r in iterator)
         yield from iterator
 
+    @rate_limited(RateLimitCategory.CORE)
     def get_replay(self, replay_id: str, *, typed: bool | None = None) -> dict | DeepReplay:
         """
         Retrieve a given replay’s details and stats.
@@ -316,13 +349,14 @@ class BallchasingApi:
         :param typed: whether to return a typed object (default is self.typed).
         :return: the result of the GET request.
         """
-        result = self._request(f"/replays/{replay_id}", "GET").json()
+        result = self._request(f"/replays/{replay_id}", "GET", category=RateLimitCategory.CORE).json()
         if typed is None:
             typed = self.typed
         if typed:
             result = DeepReplay(**result)
         return result
 
+    @rate_limited(RateLimitCategory.CORE)
     def patch_replay(
             self,
             replay_id: str,
@@ -348,8 +382,9 @@ class BallchasingApi:
             payload["visibility"] = visibility
         if group is not None:
             payload["group"] = group
-        self._request(f"/replays/{replay_id}", "PATCH", json=payload)
+        self._request(f"/replays/{replay_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
 
+    @rate_limited(RateLimitCategory.CORE)
     def upload_replay(
             self,
             replay_file: str | Path | BinaryIO,
@@ -383,11 +418,13 @@ class BallchasingApi:
             files={"file": replay_file},
             params={"group": group, "visibility": visibility},
             allow_status_codes=(409,),
+            category=RateLimitCategory.CORE,
         )
         if r.status_code == 409 and raise_on_duplicate:
             r.raise_for_status()
         return r.json()
 
+    @rate_limited(RateLimitCategory.CORE)
     def delete_replay(self, replay_id: str) -> None:
         """
         This endpoint deletes the specified replay.
@@ -395,11 +432,12 @@ class BallchasingApi:
 
         :param replay_id: the replay id.
         """
-        self._request(f"/replays/{replay_id}", "DELETE")
+        self._request(f"/replays/{replay_id}", "DELETE", category=RateLimitCategory.CORE)
 
+    @rate_limited(RateLimitCategory.LIST)
     def get_groups(
             self,
-            *,\
+            *,
             name: str | None = None,
             creator: str | None = None,
             group: str | None = None,
@@ -448,6 +486,7 @@ class BallchasingApi:
             iterator = (ShallowGroup(**g) for g in iterator)
         yield from iterator
 
+    @rate_limited(RateLimitCategory.CORE)
     def create_group(
             self,
             *,
@@ -478,8 +517,9 @@ class BallchasingApi:
         }
         if parent is not None:
             json["parent"] = parent
-        return self._request(f"/groups", "POST", json=json).json()
+        return self._request(f"/groups", "POST", json=json, category=RateLimitCategory.CORE).json()
 
+    @rate_limited(RateLimitCategory.CORE)
     def get_group(
             self,
             group_id: str,
@@ -493,13 +533,14 @@ class BallchasingApi:
         :param typed: whether to return a typed object (default is self.typed).
         :return: the group info with stats.
         """
-        result = self._request(f"/groups/{group_id}", "GET").json()
+        result = self._request(f"/groups/{group_id}", "GET", category=RateLimitCategory.CORE).json()
         if typed is None:
             typed = self.typed
         if typed:
             result = DeepGroup(**result)
         return result
 
+    @rate_limited(RateLimitCategory.CORE)
     def patch_group(
             self,
             group_id: str,
@@ -529,8 +570,9 @@ class BallchasingApi:
             payload["parent"] = parent
         if shared is not None:
             payload["shared"] = shared
-        self._request(f"/groups/{group_id}", "PATCH", json=payload)
+        self._request(f"/groups/{group_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
 
+    @rate_limited(RateLimitCategory.CORE)
     def delete_group(self, group_id: str) -> None:
         """
         This endpoint deletes the specified group.
@@ -538,7 +580,7 @@ class BallchasingApi:
 
         :param group_id: the group id.
         """
-        self._request(f"/groups/{group_id}", "DELETE")
+        self._request(f"/groups/{group_id}", "DELETE", category=RateLimitCategory.CORE)
 
     def get_group_replays(
             self,
@@ -586,6 +628,7 @@ class BallchasingApi:
         for replay in self.get_replays(group_id=group_id, deep=deep, typed=typed):
             yield [group_id], replay
 
+    @rate_limited(RateLimitCategory.DOWNLOAD)
     def download_replay(self, replay_id: str, path: str | Path) -> Path:
         """
         Download a replay file.
@@ -597,7 +640,7 @@ class BallchasingApi:
         dest = Path(path)
         if dest.is_dir():
             dest = dest / f"{replay_id}.replay"
-        r = self._request(f"/replays/{replay_id}/file", "GET", stream=True)
+        r = self._request(f"/replays/{replay_id}/file", "GET", stream=True, category=RateLimitCategory.DOWNLOAD)
         with open(dest, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
@@ -623,11 +666,12 @@ class BallchasingApi:
             for replay in self.get_group_replays(group_id):
                 self.download_replay(replay["id"], folder)
 
+    @rate_limited(RateLimitCategory.CORE)
     def get_maps(self):
         """
         Use this API to get the list of map codes to map names (map as in stadium).
         """
-        res = self._request("/maps", "GET").json()
+        res = self._request("/maps", "GET", category=RateLimitCategory.CORE).json()
         return res
 
     def get_stats(self, replay: dict | str):

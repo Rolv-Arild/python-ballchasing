@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
@@ -8,6 +9,7 @@ from requests.exceptions import ConnectionError as RequestsConnectionError, HTTP
 
 from ballchasing.api import BallchasingApi, PATRON_RATE_LIMIT_SLEEP_TIMES
 from ballchasing.constants import Map
+from ballchasing.rate_limit import RateLimiter, RateLimitCategory, resolve_category, rate_limited
 from ballchasing.typed.shared import PlayerID, BasePlayer, BaseReplay
 from ballchasing.typed.deep_replay import DeepReplay, TeamCoreStatsDR, PlayerCoreStatsDR
 from ballchasing.util.replays import is_standard_replay
@@ -100,7 +102,7 @@ class TestHttpRetryAndLogging:
              patch("time.sleep") as mock_sleep:
             res = api._request("/test", "GET")
             assert res.status_code == 200
-            mock_sleep.assert_called_once_with(3)
+            mock_sleep.assert_called_once_with(3.0)
 
     def test_rate_limit_backoff_default_when_unset(self):
         api = BallchasingApi("dummy_key", sleep_time_on_rate_limit=0, do_initial_ping=False)
@@ -346,3 +348,83 @@ class TestApiDocReflections:
             dest = api.download_replay("rep-123", tmp_path)
             assert dest == tmp_path / "rep-123.replay"
             assert dest.read_bytes() == b"PK\x03\x04fake_replay_binary"
+
+
+class TestRateLimitingAndTracker:
+    def test_initial_state_not_rate_limited(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        assert api.is_rate_limited is False
+        assert api.last_rate_limited_at is None
+        stats = api.rate_limit_stats
+        assert stats["is_rate_limited"] is False
+        assert stats["last_rate_limited_at"] is None
+        assert stats["category_counts"] == {}
+
+    def test_category_resolution(self):
+        assert resolve_category("/replays") == RateLimitCategory.LIST
+        assert resolve_category("https://ballchasing.com/api/groups") == RateLimitCategory.LIST
+        assert resolve_category("/replays/123/file") == RateLimitCategory.DOWNLOAD
+        assert resolve_category("/replays/abc-123") == RateLimitCategory.CORE
+        assert resolve_category("/groups/grp-456") == RateLimitCategory.CORE
+        assert resolve_category("/v2/upload") == RateLimitCategory.CORE
+        assert resolve_category("/maps") == RateLimitCategory.CORE
+        assert resolve_category("/") == RateLimitCategory.PING
+
+    def test_record_429_updates_tracker_and_stats(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        rl_resp = make_mock_response(status_code=429, headers={"Retry-After": "5"})
+        ok_resp = make_mock_response(status_code=200, json_data={"list": []})
+
+        with patch.object(api._session, "request", side_effect=[rl_resp, ok_resp]), \
+             patch("time.sleep"):
+            api._request("/replays", "GET")
+
+        assert api.last_rate_limited_at is not None
+        assert time.time() - api.last_rate_limited_at < 5.0
+        stats = api.rate_limit_stats
+        assert stats["category_counts"].get("list") == 1
+        assert "list" in stats["last_per_category"]
+
+    def test_category_sleep_times(self):
+        limiter = RateLimiter(patron_type_getter=lambda: "regular")
+        assert limiter.get_category_sleep_time(RateLimitCategory.LIST) == 3600 / 500  # 7.2s
+        assert limiter.get_category_sleep_time(RateLimitCategory.CORE) == 3600 / 1000  # 3.6s
+        assert limiter.get_category_sleep_time(RateLimitCategory.DOWNLOAD) == 3600 / 200  # 18.0s
+
+        gold_limiter = RateLimiter(patron_type_getter=lambda: "gold")
+        assert gold_limiter.get_category_sleep_time(RateLimitCategory.LIST) == 3600 / 1000  # 3.6s
+        assert gold_limiter.get_category_sleep_time(RateLimitCategory.CORE) == 3600 / 2000  # 1.8s
+        assert gold_limiter.get_category_sleep_time(RateLimitCategory.DOWNLOAD) == 3600 / 400  # 9.0s
+
+    def test_global_tracker_blocks_concurrent_requests(self):
+        # Simulate instance being put into cooldown
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        api.rate_limiter.record_429(RateLimitCategory.CORE, retry_after=5.0)
+
+        assert api.is_rate_limited is True
+        # A subsequent call to before_request should sleep for the remaining cooldown
+        with patch("time.sleep") as mock_sleep:
+            api.rate_limiter.before_request(RateLimitCategory.LIST)
+            assert mock_sleep.call_count == 1
+            slept = mock_sleep.call_args[0][0]
+            assert 0.0 < slept <= 5.0
+
+    def test_proactive_mode_enforces_burst_rate(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False, proactive_rate_limit=True)
+        # On proactive mode, 2 calls in immediate succession will sleep for min_interval
+        with patch("time.sleep") as mock_sleep:
+            api.rate_limiter.before_request(RateLimitCategory.LIST)
+            # First call has no elapsed constraint
+            assert mock_sleep.call_count == 0
+            # Immediate second call should sleep
+            api.rate_limiter.before_request(RateLimitCategory.LIST)
+            assert mock_sleep.call_count == 1
+            slept = mock_sleep.call_args[0][0]
+            assert 0.4 <= slept <= 0.6  # 1 / 2.0s = 0.5s interval
+
+    def test_rate_limited_decorator_attaches_to_api_methods(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        assert getattr(api.get_replay, "rate_limit_category", None) == RateLimitCategory.CORE
+        assert getattr(api.get_replays, "rate_limit_category", None) == RateLimitCategory.LIST
+        assert getattr(api.download_replay, "rate_limit_category", None) == RateLimitCategory.DOWNLOAD
+        assert getattr(api.ping, "rate_limit_category", None) == RateLimitCategory.PING
