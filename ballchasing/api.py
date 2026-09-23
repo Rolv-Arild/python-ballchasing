@@ -104,17 +104,19 @@ class BallchasingApi:
             self,
             url_or_endpoint: str,
             method: str,
+            allow_status_codes: tuple[int, ...] = (),
             **params
     ) -> Response:
         """
         Helper method for all requests.
 
-        :param url: url or endpoint for request.
+        :param url_or_endpoint: url or endpoint for request.
         :param method: the method to use.
-        :param params: parameters for GET request.
+        :param allow_status_codes: additional HTTP status codes to treat as successful responses.
+        :param params: parameters for request (e.g. params, json, files, stream).
         :return: the request result.
         :raises ConnectionError: if the connection fails after max retries.
-        :raises HTTPError: if the request fails with a status code other than 2xx or 429.
+        :raises HTTPError: if the request fails with a status code other than 2xx, 429, or allow_status_codes.
         """
         headers = {"Authorization": self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
@@ -124,7 +126,7 @@ class BallchasingApi:
         while True:
             try:
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
-                if 200 <= r.status_code < 300:
+                if 200 <= r.status_code < 300 or r.status_code in allow_status_codes:
                     return r
                 elif r.status_code == 429:
                     self.rate_limit_count += 1
@@ -270,8 +272,8 @@ class BallchasingApi:
                               RFC3339 format, e.g. '2020-01-02T15:00:05+01:00'
         :param count: returns at most count replays. Since the implementation uses an iterator it supports iterating
                       past the limit of 200 set by the API
-        :param sort_by: sort replays according the selected field
-        :param sort_dir: sort direction
+        :param sort_by: sort replays according the selected field ('replay-date', 'upload-date')
+        :param sort_dir: sort direction ('asc', 'desc')
         :param deep: whether to get full stats for each replay (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
         :param deduplicate: whether to deduplicate replays that seem to be the same game.
@@ -321,35 +323,70 @@ class BallchasingApi:
             result = DeepReplay(**result)
         return result
 
-    def patch_replay(self, replay_id: str, **params) -> None:
+    def patch_replay(
+            self,
+            replay_id: str,
+            *,
+            title: str | None = None,
+            visibility: AnyVisibility | None = None,
+            group: str | None = None,
+            **params
+    ) -> None:
         """
-        This endpoint can patch one or more fields of the specified replay
+        This endpoint can patch one or more fields of the specified replay.
 
         :param replay_id: the replay id.
-        :param params: parameters for the PATCH request.
+        :param title: new title for the replay.
+        :param visibility: new visibility ('public', 'unlisted', 'private').
+        :param group: group id to assign, or "" to unassign replay from group.
+        :param params: additional parameters for the PATCH request.
         """
-        self._request(f"/replays/{replay_id}", "PATCH", json=params)
+        payload = dict(params)
+        if title is not None:
+            payload["title"] = title
+        if visibility is not None:
+            payload["visibility"] = visibility
+        if group is not None:
+            payload["group"] = group
+        self._request(f"/replays/{replay_id}", "PATCH", json=payload)
 
     def upload_replay(
             self,
             replay_file: str | Path | BinaryIO,
             *,
             visibility: AnyVisibility | None = None,
-            group: str | None = None
+            group: str | None = None,
+            raise_on_duplicate: bool = False,
     ) -> dict:
         """
         Use this API to upload a replay file to ballchasing.com.
 
         :param replay_file: replay file to upload. Can be a file path (str or Path) or a file-like object.
-        :param visibility: to set the visibility of the uploaded replay.
+        :param visibility: to set the visibility of the uploaded replay ('public', 'unlisted', 'private').
         :param group: to upload the replay to an existing group.
-        :return: the result of the POST request.
+        :param raise_on_duplicate: if True, raise an HTTPError when a 409 Conflict (duplicate replay)
+                                   is returned. If False (default), returns the API response dict with the
+                                   existing replay id.
+        :return: the result of the POST request (dict containing replay 'id').
         """
         if isinstance(replay_file, (str, Path)):
             with open(replay_file, "rb") as f:
-                return self.upload_replay(f, visibility=visibility, group=group)
-        return self._request(f"/v2/upload", "POST", files={"file": replay_file},
-                             params={"group": group, "visibility": visibility}).json()
+                return self.upload_replay(
+                    f,
+                    visibility=visibility,
+                    group=group,
+                    raise_on_duplicate=raise_on_duplicate,
+                )
+        r = self._request(
+            "/v2/upload",
+            "POST",
+            files={"file": replay_file},
+            params={"group": group, "visibility": visibility},
+            allow_status_codes=(409,),
+        )
+        if r.status_code == 409 and raise_on_duplicate:
+            r.raise_for_status()
+        return r.json()
 
     def delete_replay(self, replay_id: str) -> None:
         """
@@ -362,7 +399,7 @@ class BallchasingApi:
 
     def get_groups(
             self,
-            *,
+            *,\
             name: str | None = None,
             creator: str | None = None,
             group: str | None = None,
@@ -388,14 +425,14 @@ class BallchasingApi:
                               RFC3339 format, e.g. 2020-01-02T15:00:05+01:00
         :param count: returns at most count groups. Since the implementation uses an iterator it supports iterating
                       past the limit of 200 set by the API
-        :param sort_by: Sort groups according the selected field.
-        :param sort_dir: Sort direction.
+        :param sort_by: Sort groups according the selected field ('created', 'name').
+        :param sort_dir: Sort direction ('asc', 'desc').
         :param deep: whether to get full stats for each group (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
         :param disable_prefetch: whether to disable prefetching.
         :return: an iterator over the groups returned by the API.
         """
-        url = f"{self.base_url}/groups/"
+        url = f"{self.base_url}/groups"
         params = {"name": name, "creator": creator, "group": group, "created-before": to_rfc3339(created_before),
                   "created-after": to_rfc3339(created_after), "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
 
@@ -423,7 +460,7 @@ class BallchasingApi:
         Use this API to create a new replay group.
 
         :param name: the new group name.
-        :param player_identification: how to identify the same player across multiple replays.
+        :param player_identification: how to identify the same player across multiple replays ('by-id', 'by-name').
                                       Some tournaments (e.g. RLCS) make players use a pool of generic Steam accounts,
                                       meaning the same player could end up using 2 different accounts in 2 series.
                                       That's when the `by-name` comes in handy
@@ -431,11 +468,16 @@ class BallchasingApi:
                                     Set to `by-distinct-players` if teams have a fixed roster of players for
                                     every single game. In some tournaments/leagues, teams allow player rotations,
                                     or a sub can replace another player, in which case use `by-player-clusters`.
-        :param parent: if set,the new group will be created as a child of the specified group
+        :param parent: if set, the new group will be created as a child of the specified group
         :return: the result of the POST request.
         """
-        json = {"name": name, "player_identification": player_identification,
-                "team_identification": team_identification, "parent": parent}
+        json = {
+            "name": name,
+            "player_identification": player_identification,
+            "team_identification": team_identification,
+        }
+        if parent is not None:
+            json["parent"] = parent
         return self._request(f"/groups", "POST", json=json).json()
 
     def get_group(
@@ -458,14 +500,36 @@ class BallchasingApi:
             result = DeepGroup(**result)
         return result
 
-    def patch_group(self, group_id: str, **params) -> None:
+    def patch_group(
+            self,
+            group_id: str,
+            *,
+            player_identification: AnyPlayerIdentification | None = None,
+            team_identification: AnyTeamIdentification | None = None,
+            parent: str | None = None,
+            shared: bool | None = None,
+            **params
+    ) -> None:
         """
         This endpoint can patch one or more fields of the specified group.
 
         :param group_id: the group id
-        :param params: parameters for the PATCH request.
+        :param player_identification: how to identify the same player across multiple replays ('by-id', 'by-name').
+        :param team_identification: how to identify the same team ('by-distinct-players', 'by-player-clusters').
+        :param parent: parent group id to assign, or "" to unparent.
+        :param shared: whether to mark the group as shared.
+        :param params: additional parameters for the PATCH request.
         """
-        self._request(f"/groups/{group_id}", "PATCH", json=params)
+        payload = dict(params)
+        if player_identification is not None:
+            payload["player_identification"] = player_identification
+        if team_identification is not None:
+            payload["team_identification"] = team_identification
+        if parent is not None:
+            payload["parent"] = parent
+        if shared is not None:
+            payload["shared"] = shared
+        self._request(f"/groups/{group_id}", "PATCH", json=payload)
 
     def delete_group(self, group_id: str) -> None:
         """
@@ -522,22 +586,24 @@ class BallchasingApi:
         for replay in self.get_replays(group_id=group_id, deep=deep, typed=typed):
             yield [group_id], replay
 
-    def download_replay(self, replay_id: str, path: str):
+    def download_replay(self, replay_id: str, path: str | Path) -> Path:
         """
         Download a replay file.
 
         :param replay_id: the replay id.
         :param path: the path to download the replay to. Can be a file path or a directory.
+        :return: the Path to the downloaded file.
         """
-        r = self._request(f"/replays/{replay_id}/file", "GET")
-        if os.path.isdir(path):
-            # If path is a directory, use the replay id as the filename
-            filename = f"{replay_id}.replay"
-            path = os.path.join(path, filename)
-        with open(path, "wb") as f:
-            f.write(r.content)
+        dest = Path(path)
+        if dest.is_dir():
+            dest = dest / f"{replay_id}.replay"
+        r = self._request(f"/replays/{replay_id}/file", "GET", stream=True)
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return dest
 
-    def download_group(self, group_id: str, folder: str, *, keep_tree_structure=True):
+    def download_group(self, group_id: str, folder: str | Path, *, keep_tree_structure=True):
         """
         Download an entire group.
 
@@ -545,14 +611,15 @@ class BallchasingApi:
         :param folder: the folder in which to create the group folder.
         :param keep_tree_structure: whether to create new folders for child groups.
         """
-        folder = os.path.join(folder, group_id)
+        folder = Path(folder) / group_id
         if keep_tree_structure:
-            os.makedirs(folder, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
             for child_group in self.get_groups(group=group_id):
                 self.download_group(child_group["id"], folder, keep_tree_structure=True)
             for replay in self.get_replays(group_id=group_id):
                 self.download_replay(replay["id"], folder)
         else:
+            folder.mkdir(parents=True, exist_ok=True)
             for replay in self.get_group_replays(group_id):
                 self.download_replay(replay["id"], folder)
 

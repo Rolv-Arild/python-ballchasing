@@ -1,8 +1,10 @@
+import io
 import logging
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 from requests import Response
-from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout
+from requests.exceptions import ConnectionError as RequestsConnectionError, HTTPError, Timeout
 
 from ballchasing.api import BallchasingApi, PATRON_RATE_LIMIT_SLEEP_TIMES
 from ballchasing.constants import Map
@@ -11,15 +13,19 @@ from ballchasing.typed.deep_replay import DeepReplay, TeamCoreStatsDR, PlayerCor
 from ballchasing.util.replays import is_standard_replay
 
 
-def make_mock_response(status_code=200, json_data=None, headers=None):
+def make_mock_response(status_code=200, json_data=None, headers=None, content=None):
     resp = Response()
     resp.status_code = status_code
-    if json_data is not None:
-        resp._content = (
-            bytes(__import__("json").dumps(json_data), "utf-8")
-        )
+    if content is not None:
+        resp._content = content
+        resp.raw = io.BytesIO(content)
+    elif json_data is not None:
+        raw_bytes = bytes(__import__("json").dumps(json_data), "utf-8")
+        resp._content = raw_bytes
+        resp.raw = io.BytesIO(raw_bytes)
     else:
         resp._content = b"{}"
+        resp.raw = io.BytesIO(b"{}")
     if headers:
         resp.headers.update(headers)
     return resp
@@ -114,7 +120,8 @@ class TestHttpRetryAndLogging:
         rl_resps = [make_mock_response(status_code=429) for _ in range(10)]
         ok_resp = make_mock_response(status_code=200, json_data={"ok": True})
 
-        with patch.object(api._session, "request", side_effect=rl_resps + [ok_resp]),              patch("time.sleep") as mock_sleep:
+        with patch.object(api._session, "request", side_effect=rl_resps + [ok_resp]), \
+             patch("time.sleep") as mock_sleep:
             res = api._request("/test", "GET")
             assert res.status_code == 200
             assert mock_sleep.call_count == 10
@@ -255,3 +262,87 @@ class TestNonePlayerIdFixes:
         valid_nobots, reason_nobots = is_standard_replay(replay, allow_bots=False)
         assert valid_nobots is False
         assert "Bot1 has no ID" in reason_nobots
+
+
+class TestApiDocReflections:
+    def test_upload_replay_returns_id_on_duplicate_409_when_not_raising(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        resp_409 = make_mock_response(409, json_data={"id": "existing-replay-id", "error": "duplicate replay"})
+
+        with patch.object(api._session, "request", return_value=resp_409):
+            result = api.upload_replay(io.BytesIO(b"dummy_replay_data"), raise_on_duplicate=False)
+            assert result["id"] == "existing-replay-id"
+
+    def test_upload_replay_raises_on_duplicate_409_when_configured(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        resp_409 = make_mock_response(409, json_data={"id": "existing-replay-id", "error": "duplicate replay"})
+
+        with patch.object(api._session, "request", return_value=resp_409):
+            with pytest.raises(HTTPError):
+                api.upload_replay(io.BytesIO(b"dummy_replay_data"), raise_on_duplicate=True)
+
+    def test_create_group_omits_parent_when_none(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(201, json_data={"id": "grp1", "name": "Top Level"})
+
+        with patch.object(api._session, "request", return_value=ok_resp) as mock_req:
+            res = api.create_group(name="Top Level", player_identification="by-id", team_identification="by-distinct-players")
+            assert res["id"] == "grp1"
+            assert mock_req.call_count == 1
+            payload = mock_req.call_args[1]["json"]
+            assert "parent" not in payload
+            assert payload == {
+                "name": "Top Level",
+                "player_identification": "by-id",
+                "team_identification": "by-distinct-players"
+            }
+
+    def test_create_group_includes_parent_when_provided(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(201, json_data={"id": "grp2", "name": "Child Group"})
+
+        with patch.object(api._session, "request", return_value=ok_resp) as mock_req:
+            api.create_group(name="Child Group", player_identification="by-id", team_identification="by-distinct-players", parent="parent-grp")
+            payload = mock_req.call_args[1]["json"]
+            assert payload["parent"] == "parent-grp"
+
+    def test_patch_replay_explicit_kwargs(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(204)
+
+        with patch.object(api._session, "request", return_value=ok_resp) as mock_req:
+            api.patch_replay("rep-123", title="New Title", visibility="private", group="")
+            payload = mock_req.call_args[1]["json"]
+            assert payload == {"title": "New Title", "visibility": "private", "group": ""}
+
+    def test_patch_group_explicit_kwargs(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(204)
+
+        with patch.object(api._session, "request", return_value=ok_resp) as mock_req:
+            api.patch_group("grp-123", player_identification="by-name", team_identification="by-player-clusters", parent="new-parent", shared=True)
+            payload = mock_req.call_args[1]["json"]
+            assert payload == {
+                "player_identification": "by-name",
+                "team_identification": "by-player-clusters",
+                "parent": "new-parent",
+                "shared": True
+            }
+
+    def test_get_groups_url_no_trailing_slash(self):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(200, json_data={"list": []})
+
+        with patch.object(api._session, "request", return_value=ok_resp) as mock_req:
+            list(api.get_groups(count=10, disable_prefetch=True))
+            called_url = mock_req.call_args[1]["url"]
+            assert called_url == f"{api.base_url}/groups"
+
+    def test_download_replay_supports_pathlib(self, tmp_path):
+        api = BallchasingApi("dummy_key", do_initial_ping=False)
+        ok_resp = make_mock_response(200, content=b"PK\x03\x04fake_replay_binary")
+
+        with patch.object(api._session, "request", return_value=ok_resp):
+            dest = api.download_replay("rep-123", tmp_path)
+            assert dest == tmp_path / "rep-123.replay"
+            assert dest.read_bytes() == b"PK\x03\x04fake_replay_binary"
