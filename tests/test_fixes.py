@@ -108,6 +108,17 @@ class TestHttpRetryAndLogging:
             assert mock_sleep.call_count == 1
             assert mock_sleep.call_args[0][0] >= 1.0
 
+    def test_rate_limit_retries_indefinitely(self):
+        api = BallchasingApi("dummy_key", sleep_time_on_rate_limit=0.125, do_initial_ping=False)
+        # Simulate 10 consecutive 429s followed by a 200 OK
+        rl_resps = [make_mock_response(status_code=429) for _ in range(10)]
+        ok_resp = make_mock_response(status_code=200, json_data={"ok": True})
+
+        with patch.object(api._session, "request", side_effect=rl_resps + [ok_resp]),              patch("time.sleep") as mock_sleep:
+            res = api._request("/test", "GET")
+            assert res.status_code == 200
+            assert mock_sleep.call_count == 10
+
     def test_logging_used_on_retry(self, caplog):
         api = BallchasingApi("dummy_key", do_initial_ping=False, print_on_rate_limit=True)
         rl_resp = make_mock_response(status_code=429)

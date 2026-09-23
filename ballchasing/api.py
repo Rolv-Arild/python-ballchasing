@@ -128,21 +128,24 @@ class BallchasingApi:
                     return r
                 elif r.status_code == 429:
                     self.rate_limit_count += 1
-                    if self.print_on_rate_limit:
-                        logger.warning(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
-                    else:
-                        logger.debug(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
                     rate_limit_retries += 1
-                    if rate_limit_retries > max_retries:
-                        r.raise_for_status()
                     retry_after = r.headers.get("Retry-After", '0')
                     retry_after = int(retry_after) if retry_after.isdigit() else None
                     if retry_after:  # integer > 0
-                        time.sleep(retry_after)
-                    elif self.sleep_time_on_rate_limit:
-                        time.sleep(self.sleep_time_on_rate_limit)
+                        wait_time = float(retry_after)
                     else:
-                        time.sleep(max(1.0, float(2 ** (rate_limit_retries - 1))))
+                        base_wait = self.sleep_time_on_rate_limit or 1.0
+                        wait_time = max(base_wait, min(float(2 ** (rate_limit_retries - 1)), 60.0))
+
+                    if self.print_on_rate_limit:
+                        logger.warning(
+                            f"Rate limited at {url} ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
+                        )
+                    else:
+                        logger.debug(
+                            f"Rate limited at {url} ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
+                        )
+                    time.sleep(wait_time)
                 elif r.status_code in (502, 503, 504):
                     raise ConnectionError(f"Server error {r.status_code}: {r.reason or 'Transient gateway error'}")
                 else:
