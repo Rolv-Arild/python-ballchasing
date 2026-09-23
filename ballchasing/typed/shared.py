@@ -20,13 +20,14 @@ class _BaseModel:
             value = getattr(self, field.name)
             if isinstance(value, _BaseModel):
                 result[field.name] = value.to_dict()
-            elif isinstance(value, list) and len(value) > 0:
-                result[field.name] = [item.to_dict() if isinstance(item, _BaseModel) else item for item in value]
+            elif isinstance(value, list):
+                if len(value) > 0:
+                    result[field.name] = [item.to_dict() if isinstance(item, _BaseModel) else item for item in value]
             elif isinstance(value, datetime):
                 # Convert datetime objects to rfc3339 formatted strings
                 result[field.name] = to_rfc3339(value)
-            elif bool(value):
-                # Only include non-empty values, to match the API's behavior
+            elif value is not None:
+                # Include non-None values, preserving valid 0 and False values
                 result[field.name] = value
         return result
 
@@ -151,7 +152,7 @@ class BasePlayer(_BaseModel, _DictToTypeMixin):
         return NotImplemented
 
     def is_bot(self):
-        return self.id.id == "" and self.id.platform == ""
+        return self.id is None or (self.id.id == "" and self.id.platform == "")
 
 
 @dataclass

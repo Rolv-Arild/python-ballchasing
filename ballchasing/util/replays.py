@@ -77,7 +77,7 @@ def is_standard_replay(replay, allow_bots=False, allow_splitscreen=False) -> tup
     if map_id is None or map_id not in Map.STANDARD_MAPS + (Map.NEOTOKYO_TOON_P,):
         if playlist_id.startswith("ranked"):
             logging.warning("Replay %s has non-standard map %s in ranked playlist %s",
-                            replay["id"], map_id, playlist_id)
+                            replay.get("id", "<unknown>"), map_id, playlist_id)
         return False, f"Map is not standard: {map_id}"
     if map_id in (Map.PARK_SNOWY_P, Map.UTOPIASTADIUM_SNOW_P, Map.EUROSTADIUM_SNOWNIGHT_P):
         if playlist_id not in Playlist.RANKED:
@@ -128,7 +128,7 @@ def is_standard_replay(replay, allow_bots=False, allow_splitscreen=False) -> tup
         if not pid and not allow_bots:
             return False, f"Player {name} has no ID"
         # Split screen players get a "player_number" that is not 0
-        player_number = pid.get("player_number", 0)
+        player_number = (pid or {}).get("player_number", 0)
         if player_number != 0 and not allow_splitscreen:
             return False, f"Player {name} has player number {player_number}, indicating split-screen"
 

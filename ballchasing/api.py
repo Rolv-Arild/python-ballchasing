@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -6,7 +7,8 @@ from pathlib import Path
 from typing import BinaryIO, Iterator
 from urllib.parse import parse_qs, urlparse
 
-from requests import sessions, Response, ConnectionError
+from requests import sessions, Response
+from requests.exceptions import ConnectionError, Timeout
 
 from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyReplaySortBy, AnySortDir, \
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
@@ -16,7 +18,17 @@ from .util.dates import to_rfc3339
 from .util.iterators import deduplicate as deduplicator
 from .util.stats import parse_replay_stats
 
+logger = logging.getLogger("ballchasing")
+
 DEFAULT_URL = "https://ballchasing.com/api"
+
+PATRON_RATE_LIMIT_SLEEP_TIMES = {
+    "regular": 3600 / 1000,
+    "gold": 3600 / 2000,
+    "diamond": 3600 / 5000,
+    "champion": 1 / 8,
+    "gc": 1 / 16,
+}
 
 
 class BallchasingApi:
@@ -48,18 +60,21 @@ class BallchasingApi:
         self.base_url = DEFAULT_URL if base_url is None else base_url
         if do_initial_ping:
             self.ping()
-        if sleep_time_on_rate_limit is None:
-            self.sleep_time_on_rate_limit = {
-                "regular": 3600 / 1000,
-                "gold": 3600 / 2000,
-                "diamond": 3600 / 5000,
-                "champion": 1 / 8,
-                "gc": 1 / 16
-            }.get(self.patron_type or "regular")
-        else:
-            self.sleep_time_on_rate_limit = sleep_time_on_rate_limit
+        self._sleep_time_on_rate_limit = sleep_time_on_rate_limit
         self.print_on_rate_limit = print_on_rate_limit
         self.typed = typed
+
+    @property
+    def sleep_time_on_rate_limit(self) -> float:
+        if self._sleep_time_on_rate_limit is not None:
+            return self._sleep_time_on_rate_limit
+        if self._ping_result is not None:
+            return PATRON_RATE_LIMIT_SLEEP_TIMES.get(self.patron_type or "regular", 3600 / 1000)
+        return PATRON_RATE_LIMIT_SLEEP_TIMES["regular"]
+
+    @sleep_time_on_rate_limit.setter
+    def sleep_time_on_rate_limit(self, value: float | None):
+        self._sleep_time_on_rate_limit = value
 
     @property
     def steam_name(self):
@@ -105,6 +120,7 @@ class BallchasingApi:
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
         max_retries = 8
         retries = 0
+        rate_limit_retries = 0
         while True:
             try:
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
@@ -113,22 +129,29 @@ class BallchasingApi:
                 elif r.status_code == 429:
                     self.rate_limit_count += 1
                     if self.print_on_rate_limit:
-                        print(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
+                        logger.warning(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
+                    else:
+                        logger.debug(f"Rate limited at {url} ({self.rate_limit_count} total rate limits)")
+                    rate_limit_retries += 1
+                    if rate_limit_retries > max_retries:
+                        r.raise_for_status()
                     retry_after = r.headers.get("Retry-After", '0')
                     retry_after = int(retry_after) if retry_after.isdigit() else None
                     if retry_after:  # integer > 0
                         time.sleep(retry_after)
                     elif self.sleep_time_on_rate_limit:
                         time.sleep(self.sleep_time_on_rate_limit)
-                elif r.status_code == 504:
-                    raise ConnectionError("Gateway Timeout. The server did not respond in time.")
+                    else:
+                        time.sleep(max(1.0, float(2 ** (rate_limit_retries - 1))))
+                elif r.status_code in (502, 503, 504):
+                    raise ConnectionError(f"Server error {r.status_code}: {r.reason or 'Transient gateway error'}")
                 else:
-                    r.raise_for_status()  # Raise an error for any other status code'
-            except ConnectionError as e:
+                    r.raise_for_status()  # Raise an error for any other status code
+            except (ConnectionError, Timeout) as e:
                 if retries >= max_retries - 1:
                     raise e
                 s = 2 ** retries
-                print(f"Connection error, trying again in {s} seconds...")
+                logger.warning(f"Connection or timeout error ({e}), trying again in {s} seconds...")
                 time.sleep(s)
                 retries += 1
 
@@ -153,7 +176,9 @@ class BallchasingApi:
         # consumer processing items.  When prefetch=False (e.g. deep mode
         # where the consumer also makes API calls), the next request is
         # submitted *after* yielding to avoid doubling the request rate.
-        remaining = params["count"]
+        remaining = params.get("count", 0)
+        if remaining <= 0:
+            return
 
         def fetch_page(p):
             return self._request(url, "GET", params=p).json()
@@ -164,15 +189,19 @@ class BallchasingApi:
 
             while remaining > 0:
                 d = future.result()
-                batch = d["list"][:min(remaining, 200)]
+                batch = d.get("list", [])[:min(remaining, 200)]
                 remaining -= len(batch)
 
-                has_next = "next" in d and remaining > 0
+                next_url = d.get("next")
+                has_next = bool(next_url) and remaining > 0
                 if has_next:
-                    next_url = d["next"]
-                    params["after"] = parse_qs(urlparse(next_url).query)["after"][0]
+                    after_param = parse_qs(urlparse(next_url).query).get("after", [None])[0]
+                    if after_param is not None:
+                        params["after"] = after_param
+                    else:
+                        has_next = False
                     params["count"] = min(remaining, 200)
-                    if prefetch:
+                    if prefetch and has_next:
                         future = executor.submit(fetch_page, dict(params))
 
                 yield from batch
@@ -262,11 +291,11 @@ class BallchasingApi:
             disable_prefetch = deep
 
         iterator = self._iterable_from_request(url, params, prefetch=not disable_prefetch)
-        if deep:
-            iterator = (self.get_replay(r["id"]) for r in iterator)
         if deduplicate:
             # Deep replays have match and replay IDs to deduplicate with. For shallow replays we check dates.
             iterator = deduplicator(iterator, check_dates=not deep)
+        if deep:
+            iterator = (self.get_replay(r["id"]) for r in iterator)
         if typed:
             if deep:
                 iterator = (DeepReplay(**r) for r in iterator)
