@@ -116,6 +116,15 @@ class TestHttpRetryAndLogging:
             assert mock_sleep.call_count == 1
             assert mock_sleep.call_args[0][0] >= 1.0
 
+    def test_initial_ping_with_rate_limiter(self):
+        # Ensure that do_initial_ping=True does not raise AttributeError: no attribute rate_limiter
+        mock_resp = make_mock_response(status_code=200, json_data={"name": "TestUser", "type": "champion"})
+        with patch("requests.sessions.Session.request", return_value=mock_resp):
+            api = BallchasingApi("dummy_key", do_initial_ping=True, proactive_rate_limit=True)
+            assert api.steam_name == "TestUser"
+            assert api.patron_type == "champion"
+            assert hasattr(api, "rate_limiter")
+
     def test_rate_limit_retries_indefinitely(self):
         api = BallchasingApi("dummy_key", sleep_time_on_rate_limit=0.125, do_initial_ping=False)
         # Simulate 10 consecutive 429s followed by a 200 OK

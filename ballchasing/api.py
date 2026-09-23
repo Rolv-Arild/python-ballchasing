@@ -61,8 +61,6 @@ class BallchasingApi:
         self._ping_result = None
         self.rate_limit_count = 0
         self.base_url = DEFAULT_URL if base_url is None else base_url
-        if do_initial_ping:
-            self.ping()
         self._sleep_time_on_rate_limit = sleep_time_on_rate_limit
         self.print_on_rate_limit = print_on_rate_limit
         self.typed = typed
@@ -70,6 +68,8 @@ class BallchasingApi:
             patron_type_getter=lambda: self._ping_result.get("type") if self._ping_result else None,
             proactive=proactive_rate_limit,
         )
+        if do_initial_ping:
+            self.ping()
 
     @property
     def sleep_time_on_rate_limit(self) -> float:
