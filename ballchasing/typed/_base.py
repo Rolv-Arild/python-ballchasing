@@ -1,7 +1,7 @@
 """Base classes and the @model decorator for the typed response objects (see models.py)."""
 import functools
 import logging
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime
 from typing import get_args
 
@@ -85,7 +85,8 @@ class _DictToTypeMixin:
             actual_type = field.type
             if args := get_args(field.type):
                 actual_type = args[0]
-            is_model = isinstance(actual_type, type) and issubclass(actual_type, _BaseModel)
+            # Into models and other dataclasses (e.g. in a user's subclass), not e.g. Any or dict
+            is_model = isinstance(actual_type, type) and (issubclass(actual_type, _BaseModel) or is_dataclass(actual_type))
             if isinstance(value, dict) and is_model:
                 new_value = actual_type(**value)
                 setattr(self, field.name, new_value)

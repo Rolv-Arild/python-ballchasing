@@ -79,6 +79,7 @@ def summarize(spec: dict) -> dict[str, str]:
                 out[f"{key} body ({content_type})"] = schema_type(content.get("schema", {}))
                 out.update(properties(f"{key} body", content.get("schema", {})))
             for status, response in op.get("responses", {}).items():
+                out[f"{key} -> {status}"] = "response"
                 for content_type, content in resolve(response).get("content", {}).items():
                     out[f"{key} -> {status} ({content_type})"] = schema_type(content.get("schema", {}))
                     out.update(properties(f"{key} -> {status}", content.get("schema", {})))

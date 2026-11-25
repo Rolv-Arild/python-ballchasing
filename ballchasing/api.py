@@ -170,12 +170,21 @@ class BallchasingApi:
 
         # Uploaded file objects are read by each attempt: rewind them before retrying
         file_objects = [f[1] if isinstance(f, tuple) else f for f in (params.get("files") or {}).values()]
-        file_positions = [(f, f.tell()) for f in file_objects if hasattr(f, "seek") and hasattr(f, "tell")]
+        file_positions = []
+        for f in file_objects:
+            try:
+                if f.seekable():  # Not e.g. a pipe or a socket: those can't be resent
+                    file_positions.append((f, f.tell()))
+            except (AttributeError, OSError, ValueError):
+                pass
+        attempt = 0
 
         while True:
             try:
-                for f, position in file_positions:
-                    f.seek(position)
+                if attempt > 0:
+                    for f, position in file_positions:
+                        f.seek(position)
+                attempt += 1
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
                 if 200 <= r.status_code < 300 or r.status_code in allow_status_codes:
                     return r
@@ -484,7 +493,10 @@ class BallchasingApi:
                     upload_token=upload_token,
                     raise_on_duplicate=raise_on_duplicate,
                 )
-        file_name = getattr(replay_file, "name", None)
+        if isinstance(replay_file, tuple):  # A requests-style (file name, file object[, content type])
+            replay_file, file_name = replay_file[1], replay_file[0]
+        else:
+            file_name = getattr(replay_file, "name", None)
         file_name = os.path.basename(file_name) if isinstance(file_name, str) else ""
         if not file_name.endswith(".replay"):  # The API refuses other file names (e.g. for a BytesIO)
             file_name = "upload.replay"
@@ -673,8 +685,10 @@ class BallchasingApi:
             payload["shared"] = shared
         if dedup is not None:
             payload["dedup"] = dedup
-        assign = [assign_replays] if isinstance(assign_replays, str) else list(assign_replays or [])
-        unassign = [unassign_replays] if isinstance(unassign_replays, str) else list(unassign_replays or [])
+        def to_list(ids):  # One id, or any iterable of them (`or` would fail on e.g. a numpy array)
+            return [] if ids is None else [ids] if isinstance(ids, str) else list(ids)
+
+        assign, unassign = to_list(assign_replays), to_list(unassign_replays)
         while True:
             if assign:
                 payload["assign_replays"], assign = assign[:MAX_ASSIGN_REPLAYS], assign[MAX_ASSIGN_REPLAYS:]

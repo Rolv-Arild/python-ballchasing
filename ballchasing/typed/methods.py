@@ -25,9 +25,13 @@ class PlayerIdMethods:
 @total_ordering
 class RankMethods:
     def __eq__(self, other):
+        if not isinstance(other, RankMethods):
+            return NotImplemented  # E.g. a player with a rank compared to one without (None)
         return self.tier == other.tier and self.division == other.division
 
     def __lt__(self, other):
+        if not isinstance(other, RankMethods):
+            return NotImplemented
         return (self.tier, self.division) < (other.tier, other.division)
 
     @classmethod

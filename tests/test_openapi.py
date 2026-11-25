@@ -510,3 +510,39 @@ class TestGeneratorOnFutureSpecs:
     def test_backslash_in_description(self):
         models = self.generate(lambda s: s["Server"].update(description=r"Path like C:\Users or \d+"))
         assert "C:\\Users" in models["Server"].__doc__
+
+
+class TestVerificationFollowUps:
+    def test_upload_from_a_pipe(self, api):
+        import os
+        read_fd, write_fd = os.pipe()
+        os.write(write_fd, b"x" * 100)
+        os.close(write_fd)
+        with os.fdopen(read_fd, "rb") as pipe, \
+                patch.object(api._session, "request", return_value=make_mock_response(201, json_data={"id": "r"})) as m:
+            api.upload_replay(pipe)
+            assert m.call_count == 1
+
+    def test_upload_requests_style_tuple(self, api):
+        with patch.object(api._session, "request", return_value=make_mock_response(201, json_data={})) as m:
+            api.upload_replay(("mine.replay", io.BytesIO(b"data")))
+            assert sent(m)["files"]["file"][0] == "mine.replay"
+
+    def test_assign_replays_from_an_array_like(self, api):
+        class ArrayLike(list):
+            def __bool__(self):
+                raise ValueError("ambiguous truth value")  # Like numpy arrays and pandas Series
+        with patch.object(api._session, "request", return_value=make_mock_response(204)) as m:
+            api.patch_group("g", assign_replays=ArrayLike(["a", "b"]))
+            assert sent(m)["json"]["assign_replays"] == ["a", "b"]
+
+    def test_rank_compared_to_none(self):
+        from ballchasing.typed.deep_replay import PlayerDR
+        pid = {"platform": "steam", "id": "1"}
+        assert PlayerDR(id=pid, rank={"tier": 1}) != PlayerDR(id=pid)
+
+    def test_new_fields_go_after_field_order(self):
+        def mutate(schemas):
+            schemas["Rank"]["properties"]["new_field"] = {"type": "integer"}
+        models = TestGeneratorOnFutureSpecs.generate(mutate)
+        assert [f for f in models["Rank"].__dataclass_fields__] == ["tier", "division", "name", "id", "new_field"]

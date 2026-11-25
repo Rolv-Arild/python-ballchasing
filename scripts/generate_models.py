@@ -268,11 +268,10 @@ class Generator:
         for name, cls in self.classes.items():
             if clash := set(self.all_fields(name)) & (mixin_attributes(chain(name)) | set(self.classes)):
                 raise ValueError(f"Fields of {name} would shadow methods or classes: {sorted(clash)}")
-            if name in FIELD_ORDER:
-                field_order = FIELD_ORDER[name]
-                if set(field_order) != set(cls["fields"]):
-                    raise ValueError(f"FIELD_ORDER[{name!r}] doesn't list exactly the fields of {name}: "
-                                     f"{sorted(set(field_order) ^ set(cls['fields']))}")
+            if name in FIELD_ORDER:  # Listed fields first, new ones after them (so positions don't move)
+                if gone := set(FIELD_ORDER[name]) - set(cls["fields"]):
+                    raise ValueError(f"FIELD_ORDER[{name!r}] lists fields {name} no longer has: {sorted(gone)}")
+                field_order = FIELD_ORDER[name] + [k for k in cls["fields"] if k not in FIELD_ORDER[name]]
                 cls["fields"] = {k: cls["fields"][k] for k in field_order}
 
         version = self.spec["info"].get("version", "")
