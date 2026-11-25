@@ -1,17 +1,20 @@
+import json
 import logging
+import math
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Iterable, Iterator
 from urllib.parse import parse_qs, urlparse
 
 from requests import sessions, Response
-from requests.exceptions import ConnectionError, Timeout
+from requests.exceptions import ConnectionError, HTTPError, Timeout
 
 from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyReplaySortBy, AnySortDir, \
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
+from ballchasing.exceptions import DailyDownloadLimitError, UploadQuotaError
 from ballchasing.rate_limit import RateLimiter, RateLimitCategory, resolve_category, rate_limited
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
 from .typed.shared import BaseGroup, BasicGroup
@@ -29,6 +32,9 @@ PATRON_RATE_LIMIT_SLEEP_TIMES = {
     "diamond": 3600 / 5000,
     "champion": 1 / 8,
     "gc": 1 / 16,
+    "legend": 1 / 16,
+    "org": 1 / 16,
+    "bot": 1 / 16,
 }
 
 
@@ -128,6 +134,7 @@ class BallchasingApi:
             method: str,
             allow_status_codes: tuple[int, ...] = (),
             category: RateLimitCategory | str | None = None,
+            auth_key: str | None = None,
             **params
     ) -> Response:
         """
@@ -137,13 +144,16 @@ class BallchasingApi:
         :param method: the method to use.
         :param allow_status_codes: additional HTTP status codes to treat as successful responses.
         :param category: rate limit category for this request.
+        :param auth_key: key to authenticate this request with instead of self.auth_key (e.g. a group upload token).
         :param params: parameters for request (e.g. params, json, files, stream).
         :return: the request result.
         :raises ConnectionError: if the connection fails after max retries.
+        :raises DailyDownloadLimitError: on a 429 for the daily limit on other people's replay files.
+        :raises UploadQuotaError: on a 429 for the account's upload quota.
         :raises HTTPError: if the request fails with a status code other than 2xx, 429, or allow_status_codes.
         """
         cat = RateLimitCategory(category) if category else resolve_category(url_or_endpoint)
-        headers = {"Authorization": self.auth_key}
+        headers = {"Authorization": auth_key or self.auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
         max_retries = 8
         retries = 0
@@ -158,6 +168,7 @@ class BallchasingApi:
                 if 200 <= r.status_code < 300 or r.status_code in allow_status_codes:
                     return r
                 elif r.status_code == 429:
+                    self._raise_for_quota(r)
                     self.rate_limit_count += 1
                     rate_limit_retries += 1
                     retry_after = r.headers.get("Retry-After", '0')
@@ -190,6 +201,24 @@ class BallchasingApi:
                 time.sleep(s)
                 retries += 1
 
+    @staticmethod
+    def _raise_for_quota(r: Response) -> None:
+        """Raise for the 429s that are quotas (not worth retrying soon) rather than rate limits."""
+        try:
+            body = r.json()
+        except ValueError:
+            return
+        if not isinstance(body, dict):
+            return
+        if "limit" in body and "reset" in body:
+            raise DailyDownloadLimitError(
+                f"Daily limit on other people's replay files reached ({body.get('count')}/{body.get('limit')}), "
+                f"resets at {body.get('reset')}", response=r, body=body)
+        if "max_uploads" in body:
+            raise UploadQuotaError(
+                f"Upload quota reached ({body.get('max_uploads')} per {body.get('window')}): {body.get('error')}",
+                response=r, body=body)
+
     @rate_limited(RateLimitCategory.PING)
     def ping(self) -> dict:
         """
@@ -205,7 +234,8 @@ class BallchasingApi:
         self._ping_result = result
         return result
 
-    def _iterable_from_request(self, url, params, prefetch=True):
+    def _iterable_from_request(self, url, params, prefetch=True, *, page_size=200,
+                               category=RateLimitCategory.LIST):
         # Shared by get_replays and get_groups.
         # When prefetch=True, the next page is requested in a background
         # thread *before* yielding, so network I/O overlaps with the
@@ -217,15 +247,15 @@ class BallchasingApi:
             return
 
         def fetch_page(p):
-            return self._request(url, "GET", params=p, category=RateLimitCategory.LIST).json()
+            return self._request(url, "GET", params=p, category=category).json()
 
         with ThreadPoolExecutor(max_workers=1) as executor:
-            params["count"] = min(remaining, 200)
+            params["count"] = min(remaining, page_size)
             future = executor.submit(fetch_page, dict(params))
 
             while remaining > 0:
                 d = future.result()
-                batch = d.get("list", [])[:min(remaining, 200)]
+                batch = d.get("list", [])[:min(remaining, page_size)]
                 remaining -= len(batch)
 
                 next_url = d.get("next")
@@ -236,7 +266,7 @@ class BallchasingApi:
                         params["after"] = after_param
                     else:
                         has_next = False
-                    params["count"] = min(remaining, 200)
+                    params["count"] = min(remaining, page_size)
                     if prefetch and has_next:
                         future = executor.submit(fetch_page, dict(params))
 
@@ -270,6 +300,7 @@ class BallchasingApi:
             count: int = 150,
             sort_by: AnyReplaySortBy | None = None,
             sort_dir: AnySortDir = SortDir.DESCENDING,
+            roulette: bool = False,
             deep: bool = False,
             typed: bool | None = None,
             deduplicate: bool = False,
@@ -279,10 +310,11 @@ class BallchasingApi:
         This endpoint lets you filter and retrieve replays. The implementation returns an iterator.
 
         :param title: filter replays by title.
-        :param player_name: filter replays by a player’s name.
+        :param player_name: filter replays by a player’s name (word or word prefix, case insensitive).
+                            Quote it (e.g. '"Can't Fly"') to match the exact name. Multiple names: replays with all.
         :param player_id: filter replays by a player’s platform id in the $platform:$id, e.g. steam:76561198141161044,
         ps4:gamertag, … You can filter replays by multiple player ids, e.g ?player-id=steam:1&player-id=steam:2
-        :param playlist: filter replays by one or more playlists.
+        :param playlist: filter replays by one or more playlists. Prefix one with "!" to exclude it (e.g. "!private").
         :param season: filter replays by season. Must be a number between 1 and 14 (for old seasons)
                        or f1, f2, … for the new free to play seasons
         :param match_result: filter your replays by result.
@@ -290,7 +322,8 @@ class BallchasingApi:
         :param max_rank: filter your replays based on players maximum rank.
         :param pro: only include replays containing at least one pro player.
         :param uploader: only include replays uploaded by the specified user. Accepts either the
-                         numerical 76*************44 steam id, or the special value 'me'
+                         numerical 76*************44 steam id, or the special value 'me'.
+                         'is:player' keeps the replays whose uploader played in them, '!is:player' the others
         :param group_id: only include replays belonging to the specified group. This only include replays immediately
                          under the specified group, but not replays in child groups
         :param map_id: only include replays in the specified map. Check get_maps for the list of valid map codes
@@ -304,8 +337,10 @@ class BallchasingApi:
                               RFC3339 format, e.g. '2020-01-02T15:00:05+01:00'
         :param count: returns at most count replays. Since the implementation uses an iterator it supports iterating
                       past the limit of 200 set by the API
-        :param sort_by: sort replays according the selected field ('replay-date', 'upload-date')
+        :param sort_by: sort replays according the selected field ('replay-date', 'created').
+                        The former name 'upload-date' is accepted and sent as 'created'.
         :param sort_dir: sort direction ('asc', 'desc')
+        :param roulette: return one random replay among the matching ones (ignores count).
         :param deep: whether to get full stats for each replay (will be much slower).
         :param typed: whether to return a typed object (default is self.typed).
         :param deduplicate: whether to deduplicate replays that seem to be the same game.
@@ -313,13 +348,16 @@ class BallchasingApi:
         :return: an iterator over the replays returned by the API.
         """
         url = f"{self.base_url}/replays"
+        if sort_by == "upload-date":
+            sort_by = "created"  # Renamed in the API, "upload-date" now gives a 400
         params = {"title": title, "player-name": player_name, "player-id": player_id, "playlist": playlist,
                   "season": season, "match-result": match_result, "min-rank": min_rank, "max-rank": max_rank,
                   "pro": str(pro).lower() if isinstance(pro, bool) else pro, "uploader": uploader, "group": group_id,
                   "map": map_id,
                   "created-before": to_rfc3339(created_before), "created-after": to_rfc3339(created_after),
                   "replay-date-after": to_rfc3339(replay_after), "replay-date-before": to_rfc3339(replay_before),
-                  "count": count, "sort-by": sort_by, "sort-dir": sort_dir}
+                  "count": count, "sort-by": sort_by, "sort-dir": sort_dir,
+                  "roulette": "true" if roulette else None}
 
         if typed is None:
             typed = self.typed
@@ -332,7 +370,7 @@ class BallchasingApi:
             # Deep replays have match and replay IDs to deduplicate with. For shallow replays we check dates.
             iterator = deduplicator(iterator, check_dates=not deep)
         if deep:
-            iterator = (self.get_replay(r["id"]) for r in iterator)
+            iterator = (self.get_replay(r["id"], typed=False) for r in iterator)
         if typed:
             if deep:
                 iterator = (DeepReplay(**r) for r in iterator)
@@ -341,15 +379,24 @@ class BallchasingApi:
         yield from iterator
 
     @rate_limited(RateLimitCategory.CORE)
-    def get_replay(self, replay_id: str, *, typed: bool | None = None) -> dict | DeepReplay:
+    def get_replay(
+            self,
+            replay_id: str,
+            *,
+            group: str | None = None,
+            typed: bool | None = None
+    ) -> dict | DeepReplay:
         """
         Retrieve a given replay’s details and stats.
 
         :param replay_id: the replay id.
+        :param group: id of a shared group holding the replay. Its owner's replays in it can then be read whatever
+                      their visibility, as on the group's page.
         :param typed: whether to return a typed object (default is self.typed).
         :return: the result of the GET request.
         """
-        result = self._request(f"/replays/{replay_id}", "GET", category=RateLimitCategory.CORE).json()
+        result = self._request(f"/replays/{replay_id}", "GET", params={"group": group},
+                               category=RateLimitCategory.CORE).json()
         if typed is None:
             typed = self.typed
         if typed:
@@ -384,13 +431,16 @@ class BallchasingApi:
             payload["group"] = group
         self._request(f"/replays/{replay_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
 
-    @rate_limited(RateLimitCategory.CORE)
+    @rate_limited(RateLimitCategory.UPLOAD)
     def upload_replay(
             self,
             replay_file: str | Path | BinaryIO,
             *,
             visibility: AnyVisibility | None = None,
             group: str | None = None,
+            title: str | None = None,
+            match: dict | str | None = None,
+            upload_token: str | None = None,
             raise_on_duplicate: bool = False,
     ) -> dict:
         """
@@ -399,10 +449,17 @@ class BallchasingApi:
         :param replay_file: replay file to upload. Can be a file path (str or Path) or a file-like object.
         :param visibility: to set the visibility of the uploaded replay ('public', 'unlisted', 'private').
         :param group: to upload the replay to an existing group.
+        :param title: title of the new replay (at most 1024 characters; an invalid one is silently ignored by the API).
+        :param match: the game's match data, as Psyonix's match history API returns it (an RLAPI `Match` object,
+                      as a dict or JSON string). It needs `MatchGUID`; an invalid value is ignored by the API.
+        :param upload_token: a group upload token (starts with "g/") to authenticate the upload with instead of the
+                             API key: the replay goes to that group. See get_group_upload_token.
         :param raise_on_duplicate: if True, raise an HTTPError when a 409 Conflict (duplicate replay)
                                    is returned. If False (default), returns the API response dict with the
-                                   existing replay id.
-        :return: the result of the POST request (dict containing replay 'id').
+                                   existing replay id. (With a group upload token, a replay its owner already has
+                                   outside the group gives a 409 without an id.)
+        :return: the result of the POST request (dict containing replay 'id' and 'location').
+        :raises UploadQuotaError: if the account reached its upload quota.
         """
         if isinstance(replay_file, (str, Path)):
             with open(replay_file, "rb") as f:
@@ -410,15 +467,23 @@ class BallchasingApi:
                     f,
                     visibility=visibility,
                     group=group,
+                    title=title,
+                    match=match,
+                    upload_token=upload_token,
                     raise_on_duplicate=raise_on_duplicate,
                 )
+        files = {"file": replay_file}
+        if match is not None:
+            files["match"] = (None, match if isinstance(match, str) else json.dumps(match), "application/json")
         r = self._request(
             "/v2/upload",
             "POST",
-            files={"file": replay_file},
+            files=files,
+            data={"title": title} if title is not None else None,
             params={"group": group, "visibility": visibility},
             allow_status_codes=(409,),
-            category=RateLimitCategory.CORE,
+            category=RateLimitCategory.UPLOAD,
+            auth_key=upload_token,
         )
         if r.status_code == 409 and raise_on_duplicate:
             r.raise_for_status()
@@ -493,7 +558,8 @@ class BallchasingApi:
             name: str,
             player_identification: AnyPlayerIdentification,
             team_identification: AnyTeamIdentification,
-            parent: str | None = None
+            parent: str | None = None,
+            dedup: bool | None = None,
     ) -> dict:
         """
         Use this API to create a new replay group.
@@ -508,7 +574,9 @@ class BallchasingApi:
                                     every single game. In some tournaments/leagues, teams allow player rotations,
                                     or a sub can replace another player, in which case use `by-player-clusters`.
         :param parent: if set, the new group will be created as a child of the specified group
-        :return: the result of the POST request.
+        :param dedup: whether to count each game once (API default: True) or every replay, when several replays
+                      hold the same game.
+        :return: the result of the POST request (dict containing group 'id' and 'link').
         """
         json = {
             "name": name,
@@ -517,6 +585,8 @@ class BallchasingApi:
         }
         if parent is not None:
             json["parent"] = parent
+        if dedup is not None:
+            json["dedup"] = dedup
         return self._request(f"/groups", "POST", json=json, category=RateLimitCategory.CORE).json()
 
     @rate_limited(RateLimitCategory.CORE)
@@ -524,16 +594,20 @@ class BallchasingApi:
             self,
             group_id: str,
             *,
+            dedup: bool | None = None,
             typed: bool | None = None
     ) -> dict | DeepGroup:
         """
         This endpoint retrieves a specific replay group info and stats given its id.
 
         :param group_id: the group id.
+        :param dedup: count each game once (True) or every replay (False) for this request.
+                      Default (None) uses the group's own dedup setting.
         :param typed: whether to return a typed object (default is self.typed).
         :return: the group info with stats.
         """
-        result = self._request(f"/groups/{group_id}", "GET", category=RateLimitCategory.CORE).json()
+        params = {"dedup": None if dedup is None else ("on" if dedup else "off")}
+        result = self._request(f"/groups/{group_id}", "GET", params=params, category=RateLimitCategory.CORE).json()
         if typed is None:
             typed = self.typed
         if typed:
@@ -549,6 +623,9 @@ class BallchasingApi:
             team_identification: AnyTeamIdentification | None = None,
             parent: str | None = None,
             shared: bool | None = None,
+            dedup: bool | None = None,
+            assign_replays: Iterable[str] | None = None,
+            unassign_replays: Iterable[str] | None = None,
             **params
     ) -> None:
         """
@@ -559,7 +636,14 @@ class BallchasingApi:
         :param team_identification: how to identify the same team ('by-distinct-players', 'by-player-clusters').
         :param parent: parent group id to assign, or "" to unparent.
         :param shared: whether to mark the group as shared.
+        :param dedup: count each game once (True) or every replay (False), in this group and its sub-groups.
+        :param assign_replays: ids of replays to put directly in this group (yours, or other people's public and
+                               unlisted ones). They leave the other groups of yours they were directly in.
+        :param unassign_replays: ids of replays to take out of your groups.
         :param params: additional parameters for the PATCH request.
+
+        The API takes at most 150 replays to assign and 300 to unassign per request; longer lists are sent in
+        several requests (the other fields go with the first one).
         """
         payload = dict(params)
         if player_identification is not None:
@@ -570,7 +654,19 @@ class BallchasingApi:
             payload["parent"] = parent
         if shared is not None:
             payload["shared"] = shared
-        self._request(f"/groups/{group_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
+        if dedup is not None:
+            payload["dedup"] = dedup
+        assign = list(assign_replays) if assign_replays is not None else []
+        unassign = list(unassign_replays) if unassign_replays is not None else []
+        while True:
+            if assign:
+                payload["assign_replays"], assign = assign[:150], assign[150:]
+            if unassign:
+                payload["unassign_replays"], unassign = unassign[:300], unassign[300:]
+            self._request(f"/groups/{group_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
+            if not assign and not unassign:
+                break
+            payload = {}
 
     @rate_limited(RateLimitCategory.CORE)
     def delete_group(self, group_id: str) -> None:
@@ -581,6 +677,47 @@ class BallchasingApi:
         :param group_id: the group id.
         """
         self._request(f"/groups/{group_id}", "DELETE", category=RateLimitCategory.CORE)
+
+    @rate_limited(RateLimitCategory.CORE)
+    def get_group_duplicate_replays(self, group_id: str, *, count: int | None = None) -> Iterator[dict]:
+        """
+        List the group's replays that hold a game already held in another of its replays: the replays not counted
+        when the group counts each game once. The same whatever the group's dedup setting.
+
+        :param group_id: the group id.
+        :param count: return at most count rows (default: all of them).
+        :return: an iterator of {"replay_id": ..., "same_game_as": ...} dicts, sorted by replay_id.
+        :raises HTTPError: 422 if the group holds more replays than its owner's limit for stats.
+        """
+        params = {"count": math.inf if count is None else count}
+        yield from self._iterable_from_request(f"{self.base_url}/groups/{group_id}/duplicate-replays", params,
+                                               page_size=1000, category=RateLimitCategory.CORE)
+
+    @rate_limited(RateLimitCategory.CORE)
+    def get_group_upload_token(self, group_id: str) -> dict | None:
+        """
+        Get the upload token of one of your groups: a key that uploads replays straight into that group
+        (pass it as upload_token to upload_replay). Available to Gold patrons and up (others get a 404).
+
+        :param group_id: the group id.
+        :return: a dict with 'token', 'created_at', 'generation' (and 'updated_at' if replaced),
+                 or None if the group has no token yet (see create_group_upload_token).
+        """
+        r = self._request(f"/groups/{group_id}/token", "GET", category=RateLimitCategory.CORE)
+        if r.status_code == 204:
+            return None
+        return r.json()
+
+    @rate_limited(RateLimitCategory.CORE)
+    def create_group_upload_token(self, group_id: str) -> dict:
+        """
+        Create the upload token of one of your groups, or REPLACE it: the previous token stops working at once,
+        breaking the tools that use it. Available to Gold patrons and up (others get a 404).
+
+        :param group_id: the group id.
+        :return: a dict with 'token', 'created_at', 'generation' (and 'updated_at' if replaced).
+        """
+        return self._request(f"/groups/{group_id}/token", "POST", category=RateLimitCategory.CORE).json()
 
     def get_group_replays(
             self,
@@ -636,6 +773,8 @@ class BallchasingApi:
         :param replay_id: the replay id.
         :param path: the path to download the replay to. Can be a file path or a directory.
         :return: the Path to the downloaded file.
+        :raises DailyDownloadLimitError: if the daily limit on other people's replay files is reached.
+        :raises HTTPError: e.g. 410 if the server lost the replay file (retrying will not help).
         """
         dest = Path(path)
         if dest.is_dir():
@@ -653,6 +792,8 @@ class BallchasingApi:
         :param group_id: the base group id.
         :param folder: the folder in which to create the group folder.
         :param keep_tree_structure: whether to create new folders for child groups.
+
+        Replays whose file the server lost (410) are skipped with a warning.
         """
         folder = Path(folder) / group_id
         if keep_tree_structure:
@@ -660,11 +801,20 @@ class BallchasingApi:
             for child_group in self.get_groups(group=group_id):
                 self.download_group(child_group["id"], folder, keep_tree_structure=True)
             for replay in self.get_replays(group_id=group_id):
-                self.download_replay(replay["id"], folder)
+                self._download_replay_unless_lost(replay["id"], folder)
         else:
             folder.mkdir(parents=True, exist_ok=True)
             for replay in self.get_group_replays(group_id):
-                self.download_replay(replay["id"], folder)
+                self._download_replay_unless_lost(replay["id"], folder)
+
+    def _download_replay_unless_lost(self, replay_id: str, folder: Path) -> Path | None:
+        try:
+            return self.download_replay(replay_id, folder)
+        except HTTPError as e:
+            if e.response is not None and e.response.status_code == 410:
+                logger.warning(f"Skipping replay {replay_id}: the server lost its file (410)")
+                return None
+            raise
 
     @rate_limited(RateLimitCategory.CORE)
     def get_maps(self):

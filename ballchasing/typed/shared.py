@@ -1,3 +1,5 @@
+import functools
+import logging
 from dataclasses import dataclass, fields, field
 from datetime import datetime
 from functools import total_ordering
@@ -5,17 +7,47 @@ from typing import get_args, Optional, List
 
 from ballchasing.util.dates import from_rfc3339, to_rfc3339
 
+logger = logging.getLogger("ballchasing")
+
+_reported_unknown_fields: set[tuple[str, str]] = set()
+
+
+def model(cls):
+    """
+    Like ``@dataclass``, but the generated ``__init__`` accepts keyword arguments that are not fields.
+
+    The API adds response fields over time; a plain dataclass would raise a ``TypeError`` on the first unknown one.
+    Unknown fields are kept (unconverted) in the instance's ``_extra`` dict instead, and included by ``to_dict``.
+    """
+    cls = dataclass(cls)
+    dataclass_init = cls.__init__
+    known = frozenset(f.name for f in fields(cls))
+
+    @functools.wraps(dataclass_init)
+    def __init__(self, *args, **kwargs):
+        extra = {k: kwargs.pop(k) for k in [k for k in kwargs if k not in known]}
+        for k in extra:
+            if (cls.__name__, k) not in _reported_unknown_fields:
+                _reported_unknown_fields.add((cls.__name__, k))
+                logger.debug(f"Unknown field '{k}' for {cls.__name__}, stored in _extra")
+        self._extra = extra
+        dataclass_init(self, *args, **kwargs)
+
+    cls.__init__ = __init__
+    return cls
+
 
 class _BaseModel:
     """
     Base model class for all dataclasses in this module.
     """
+    _extra: dict  # Response fields without a dataclass field (set by @model), not a dataclass field itself
 
     def to_dict(self):
         """
         Convert (back) to a dict. Not a perfect recreation.
         """
-        result = {}
+        result = dict(getattr(self, "_extra", {}))
         for field in fields(self):
             value = getattr(self, field.name)
             if isinstance(value, _BaseModel):
@@ -62,12 +94,14 @@ class _DictToTypeMixin:
             #             raise TypeError(f"Expected {field.name} to be of type {actual_type}, got {type(value)}")
 
 
-@dataclass
+@model
 class User(_BaseModel):
     steam_id: str = ""
     name: str = ""
     profile_url: str = ""
     avatar: str = ""
+    avatar_full: str = ""
+    avatar_medium: str = ""
 
     def __eq__(self, other):
         if isinstance(other, User):
@@ -75,7 +109,7 @@ class User(_BaseModel):
         return False
 
 
-@dataclass
+@model
 class PlayerID(_BaseModel):
     platform: str = ""
     id: str = ""
@@ -88,7 +122,7 @@ class PlayerID(_BaseModel):
 
 
 @total_ordering
-@dataclass
+@model
 class Rank(_BaseModel):
     tier: int = 0
     division: int = 0
@@ -136,7 +170,7 @@ class Rank(_BaseModel):
         return res
 
 
-@dataclass
+@model
 class BasePlayer(_BaseModel, _DictToTypeMixin):
     start_time: float = 0.0
     end_time: float = 0.0
@@ -155,7 +189,7 @@ class BasePlayer(_BaseModel, _DictToTypeMixin):
         return self.id is None or (self.id.id == "" and self.id.platform == "")
 
 
-@dataclass
+@model
 class BaseTeam(_BaseModel, _DictToTypeMixin):
     name: str = ""
     # Further specified in subclasses, needed for methods:
@@ -174,7 +208,7 @@ class BaseTeam(_BaseModel, _DictToTypeMixin):
         return NotImplemented
 
 
-@dataclass
+@model
 class BasicGroup(_BaseModel):  # Shared between replays and shallow/deep groups
     id: str = ""
     name: str = ""
@@ -186,15 +220,15 @@ class BasicGroup(_BaseModel):  # Shared between replays and shallow/deep groups
         return NotImplemented
 
 
-@dataclass
+@model
 class BaseGroup(BasicGroup, _DictToTypeMixin):  # Shared between shallow and deep groups
-    created: Optional[datetime] = ""
+    created: Optional[datetime] = None
     player_identification: str = ""
     team_identification: str = ""
     shared: bool = False
 
 
-@dataclass
+@model
 class BaseReplay(_BaseModel, _DictToTypeMixin):  # Shared between shallow and deep replays
     id: str = ""
     link: str = ""

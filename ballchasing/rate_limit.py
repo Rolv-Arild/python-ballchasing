@@ -13,6 +13,7 @@ class RateLimitCategory(str, Enum):
     CORE = "core"          # GET/PATCH/DELETE /replays/{id}, /groups/{id}, POST /groups, upload, maps
     DOWNLOAD = "download"  # GET /replays/{id}/file
     PING = "ping"          # GET /
+    UPLOAD = "upload"      # POST /v2/upload: limited by the account's upload quota, not per second
 
 
 # Hourly rate limit backoff times per category (seconds to wait between requests)
@@ -20,7 +21,8 @@ class RateLimitCategory(str, Enum):
 # - gold: list 1000/hr (3.6s), core 2000/hr (1.8s), download 400/hr (9.0s)
 # - diamond: list 2000/hr (1.8s), core 5000/hr (0.72s), download 1000/hr (3.6s)
 # - champion: list 8/s, core 8/s, download 2000/hr (1.8s)
-# - gc: list 16/s, core 16/s, download 2/s (0.5s)
+# - gc, legend, org, bot: list 16/s, core 16/s, download 2/s (0.5s)
+# Source: the x-rate-limits extension of each operation in https://ballchasing.com/doc/api/openapi.json
 CATEGORY_HOURLY_SLEEP_TIMES: dict[str, dict[RateLimitCategory, float]] = {
     "regular": {
         RateLimitCategory.LIST: 3600 / 500,      # 7.2s
@@ -53,6 +55,10 @@ CATEGORY_HOURLY_SLEEP_TIMES: dict[str, dict[RateLimitCategory, float]] = {
         RateLimitCategory.PING: 0.0,
     },
 }
+for _tier in ("legend", "org", "bot"):  # Same limits as GC patrons
+    CATEGORY_HOURLY_SLEEP_TIMES[_tier] = CATEGORY_HOURLY_SLEEP_TIMES["gc"]
+for _times in CATEGORY_HOURLY_SLEEP_TIMES.values():
+    _times.setdefault(RateLimitCategory.UPLOAD, 0.0)
 
 # Maximum calls per second (burst rates)
 CATEGORY_BURST_RATES: dict[str, dict[RateLimitCategory, float]] = {
@@ -62,6 +68,10 @@ CATEGORY_BURST_RATES: dict[str, dict[RateLimitCategory, float]] = {
     "champion": {RateLimitCategory.LIST: 8.0, RateLimitCategory.CORE: 8.0, RateLimitCategory.DOWNLOAD: 2.0, RateLimitCategory.PING: 10.0},
     "gc": {RateLimitCategory.LIST: 16.0, RateLimitCategory.CORE: 16.0, RateLimitCategory.DOWNLOAD: 2.0, RateLimitCategory.PING: 10.0},
 }
+for _tier in ("legend", "org", "bot"):  # Same limits as GC patrons
+    CATEGORY_BURST_RATES[_tier] = CATEGORY_BURST_RATES["gc"]
+for _rates in CATEGORY_BURST_RATES.values():
+    _rates.setdefault(RateLimitCategory.UPLOAD, 10.0)
 
 
 def resolve_category(url_or_endpoint: str) -> RateLimitCategory:
@@ -69,6 +79,8 @@ def resolve_category(url_or_endpoint: str) -> RateLimitCategory:
     path = url_or_endpoint.split("?")[0].rstrip("/")
     if path.endswith("/file"):
         return RateLimitCategory.DOWNLOAD
+    if path.endswith("/v2/upload"):
+        return RateLimitCategory.UPLOAD
     if path.endswith("/replays") or path.endswith("/groups"):
         return RateLimitCategory.LIST
     if path == "" or path.endswith("/api") or path.endswith("/api/"):

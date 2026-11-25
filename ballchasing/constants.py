@@ -15,7 +15,8 @@ AnyPlaylist: TypeAlias = str | Literal[
     "ranked-duels", "ranked-doubles", "ranked-solo-standard", "ranked-standard",
     "snowday", "rocketlabs", "hoops", "rumble", "tournament", "dropshot",
     "ranked-hoops", "ranked-rumble", "ranked-dropshot", "ranked-snowday",
-    "dropshot-rumble", "heatseeker", "gridiron", "spooky-cube"
+    "dropshot-rumble", "heatseeker", "gridiron", "spooky-cube",
+    "anniversary", "third-party", "ghost-hunt", "beach-ball", "spike-rush", "rocket-labs"
 ]
 
 
@@ -23,14 +24,15 @@ class Playlist:
     ALL = (UNRANKED_DUELS, UNRANKED_DOUBLES, UNRANKED_STANDARD, UNRANKED_CHAOS, PRIVATE, SEASON, OFFLINE, LOCAL_LOBBY,
            RANKED_DUELS, RANKED_DOUBLES, RANKED_SOLO_STANDARD, RANKED_STANDARD, SNOWDAY, ROCKETLABS, HOOPS, RUMBLE,
            TOURNAMENT, DROPSHOT, RANKED_HOOPS, RANKED_RUMBLE, RANKED_DROPSHOT, RANKED_SNOWDAY, DROPSHOT_RUMBLE,
-           HEATSEEKER, GRIDIRON, SPOOKY_CUBE) = _get_literals(AnyPlaylist)
+           HEATSEEKER, GRIDIRON, SPOOKY_CUBE, ANNIVERSARY, THIRD_PARTY, GHOST_HUNT, BEACH_BALL, SPIKE_RUSH,
+           ROCKET_LABS) = _get_literals(AnyPlaylist)
     # Categories as listed on ballchasing:
     RANKED = (RANKED_DUELS, RANKED_DOUBLES, RANKED_STANDARD, RANKED_SOLO_STANDARD)
     UNRANKED = (UNRANKED_DUELS, UNRANKED_DOUBLES, UNRANKED_STANDARD, UNRANKED_CHAOS)
     EXTRA_MODES = (RANKED_HOOPS, RANKED_RUMBLE, RANKED_DROPSHOT, RANKED_SNOWDAY)
-    OTHER_MODES = (SNOWDAY, ROCKETLABS, HOOPS, RUMBLE, TOURNAMENT, DROPSHOT, ROCKETLABS, DROPSHOT_RUMBLE, HEATSEEKER,
-                   GRIDIRON, SPOOKY_CUBE)
-    MISC = (PRIVATE, SEASON, OFFLINE, LOCAL_LOBBY)
+    OTHER_MODES = (SNOWDAY, ROCKETLABS, HOOPS, RUMBLE, TOURNAMENT, DROPSHOT, DROPSHOT_RUMBLE, HEATSEEKER,
+                   GRIDIRON, SPOOKY_CUBE, ANNIVERSARY, GHOST_HUNT, BEACH_BALL, SPIKE_RUSH, ROCKET_LABS)
+    MISC = (PRIVATE, SEASON, OFFLINE, LOCAL_LOBBY, THIRD_PARTY)
 
 
 AnyRank: TypeAlias = str | Literal[
@@ -73,7 +75,7 @@ AnySeason: TypeAlias = str | Literal[
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
     "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9",
     "f10", "f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19",
-    "f20", "f21", "f22"
+    "f20", "f21", "f22", "f23", "f24"
 ]
 
 
@@ -85,7 +87,7 @@ class Season:
         SEASON_1_FTP, SEASON_2_FTP, SEASON_3_FTP, SEASON_4_FTP, SEASON_5_FTP, SEASON_6_FTP, SEASON_7_FTP,
         SEASON_8_FTP, SEASON_9_FTP, SEASON_10_FTP, SEASON_11_FTP, SEASON_12_FTP, SEASON_13_FTP, SEASON_14_FTP,
         SEASON_15_FTP, SEASON_16_FTP, SEASON_17_FTP, SEASON_18_FTP, SEASON_19_FTP, SEASON_20_FTP, SEASON_21_FTP,
-        SEASON_22_FTP
+        SEASON_22_FTP, SEASON_23_FTP, SEASON_24_FTP
     ) = _get_literals(AnySeason)
     LEGACY = ALL[:14]
     FREE_TO_PLAY = ALL[14:]
@@ -98,11 +100,12 @@ class MatchResult:
     WIN, LOSS = _get_literals(AnyMatchResult)
 
 
-AnyReplaySortBy: TypeAlias = str | Literal["replay-date", "upload-date"]
+AnyReplaySortBy: TypeAlias = str | Literal["replay-date", "created"]
 
 
 class ReplaySortBy:
-    REPLAY_DATE, UPLOAD_DATE = _get_literals(AnyReplaySortBy)
+    REPLAY_DATE, CREATED = _get_literals(AnyReplaySortBy)
+    UPLOAD_DATE = CREATED  # The API used to call it "upload-date", which it now rejects with a 400
 
 
 AnyGroupSortBy: TypeAlias = str | Literal["created", "name"]

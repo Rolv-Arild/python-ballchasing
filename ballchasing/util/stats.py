@@ -8,7 +8,7 @@ from .replays import get_pid
 
 @cache
 def get_stats_info():
-    cur_path = Path(__file__).parent
+    cur_path = Path(__file__).parent.parent  # stats_info.tsv lives in the ballchasing package root
     with open(cur_path / "stats_info.tsv") as stats_info:
         stats_info = [line.strip().split("\t") for line in stats_info]
 

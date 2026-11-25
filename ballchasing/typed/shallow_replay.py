@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from typing import Optional, List
 
-from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseTeam, BaseReplay
+from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseTeam, BaseReplay, model
 
 
-@dataclass
+@model
 class PlayerSR(BasePlayer):
     # start_time: float = 0.0
     # end_time: float = 0.0
@@ -14,9 +14,10 @@ class PlayerSR(BasePlayer):
     # mvp: bool = False
     # rank: Optional[Rank] = None
     score: int = 0
+    liquipedia_roles: List[str] = field(default_factory=list)
 
 
-@dataclass
+@model
 class TeamSR(BaseTeam):
     # name: str = ""
     goals: int = 0
@@ -34,7 +35,7 @@ class TeamSR(BaseTeam):
         return NotImplemented
 
 
-@dataclass
+@model
 class ShallowReplay(BaseReplay):
     # id: str = ""
     # link: str = ""

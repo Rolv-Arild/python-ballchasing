@@ -29,6 +29,15 @@ saves	{}.stats.core.saves	FALSE	TRUE	FALSE	normalizable	TRUE	int
 assists	{}.stats.core.assists	FALSE	TRUE	FALSE	normalizable	TRUE	int
 score	{}.stats.core.score	FALSE	TRUE	FALSE	normalizable	TRUE	int
 shooting_percentage	{}.stats.core.shooting_percentage	FALSE	TRUE	FALSE	average	TRUE	int
+epic_saves	{}.stats.core.epic_saves	FALSE	TRUE	FALSE	normalizable	TRUE	int
+clears	{}.stats.core.clears	FALSE	TRUE	FALSE	normalizable	TRUE	int
+centers	{}.stats.core.centers	FALSE	TRUE	FALSE	normalizable	TRUE	int
+aerial_hits	{}.stats.core.aerial_hits	FALSE	TRUE	FALSE	normalizable	TRUE	int
+first_touches	{}.stats.core.first_touches	FALSE	TRUE	FALSE	normalizable	TRUE	int
+flip_resets	{}.stats.core.flip_resets	FALSE	TRUE	FALSE	normalizable	TRUE	int
+crossbar_hits	{}.stats.core.crossbar_hits	FALSE	TRUE	FALSE	normalizable	TRUE	int
+bicycle_hits	{}.stats.core.bicycle_hits	FALSE	TRUE	FALSE	normalizable	TRUE	int
+juggle_hits	{}.stats.core.juggle_hits	FALSE	TRUE	FALSE	normalizable	TRUE	int
 bpm	{}.stats.boost.bpm	FALSE	TRUE	FALSE	average	TRUE	float
 bcpm	{}.stats.boost.bcpm	FALSE	TRUE	FALSE	average	TRUE	float
 avg_boost_amount	{}.stats.boost.avg_amount	FALSE	TRUE	FALSE	average	TRUE	float
@@ -57,6 +66,7 @@ time_slow_speed	{}.stats.movement.time_slow_speed	FALSE	TRUE	FALSE	time	TRUE	flo
 time_ground	{}.stats.movement.time_ground	FALSE	TRUE	FALSE	time	TRUE	float
 time_low_air	{}.stats.movement.time_low_air	FALSE	TRUE	FALSE	time	TRUE	float
 time_high_air	{}.stats.movement.time_high_air	FALSE	TRUE	FALSE	time	TRUE	float
+time_wall	{}.stats.movement.time_wall	FALSE	TRUE	FALSE	time	TRUE	float
 time_powerslide	{}.stats.movement.time_powerslide	FALSE	TRUE	FALSE	time	TRUE	float
 count_powerslide	{}.stats.movement.count_powerslide	FALSE	TRUE	FALSE	normalizable	TRUE	int
 time_defensive_third	{}.stats.positioning.time_defensive_third	FALSE	TRUE	FALSE	time	TRUE	float
@@ -68,6 +78,10 @@ time_behind_ball	{}.stats.positioning.time_behind_ball	FALSE	TRUE	FALSE	time	TRU
 time_infront_ball	{}.stats.positioning.time_infront_ball	FALSE	TRUE	FALSE	time	TRUE	float
 demos_inflicted	{}.stats.demo.inflicted	FALSE	TRUE	FALSE	normalizable	TRUE	int
 demos_taken	{}.stats.demo.taken	FALSE	TRUE	FALSE	normalizable	TRUE	int
+demos_inflicted_in_offensive_half	{}.stats.demo.inflicted_in_offensive_half	FALSE	TRUE	FALSE	normalizable	TRUE	int
+demos_inflicted_in_defensive_half	{}.stats.demo.inflicted_in_defensive_half	FALSE	TRUE	FALSE	normalizable	TRUE	int
+demos_taken_in_offensive_half	{}.stats.demo.taken_in_offensive_half	FALSE	TRUE	FALSE	normalizable	TRUE	int
+demos_taken_in_defensive_half	{}.stats.demo.taken_in_defensive_half	FALSE	TRUE	FALSE	normalizable	TRUE	int
 start_time	{}.players.{}.start_time	FALSE	FALSE	TRUE	info	FALSE	float
 end_time	{}.players.{}.end_time	FALSE	FALSE	TRUE	info	FALSE	float
 player_name	{}.players.{}.name	FALSE	FALSE	TRUE	info	FALSE	str
@@ -92,6 +106,15 @@ assists	{}.players.{}.stats.core.assists	FALSE	FALSE	TRUE	normalizable	FALSE	int
 score	{}.players.{}.stats.core.score	FALSE	FALSE	TRUE	normalizable	FALSE	int
 mvp	{}.players.{}.stats.core.mvp	FALSE	FALSE	TRUE	info	FALSE	bool
 shooting_percentage	{}.players.{}.stats.core.shooting_percentage	FALSE	FALSE	TRUE	average	FALSE	float
+epic_saves	{}.players.{}.stats.core.epic_saves	FALSE	FALSE	TRUE	normalizable	FALSE	int
+clears	{}.players.{}.stats.core.clears	FALSE	FALSE	TRUE	normalizable	FALSE	int
+centers	{}.players.{}.stats.core.centers	FALSE	FALSE	TRUE	normalizable	FALSE	int
+aerial_hits	{}.players.{}.stats.core.aerial_hits	FALSE	FALSE	TRUE	normalizable	FALSE	int
+first_touches	{}.players.{}.stats.core.first_touches	FALSE	FALSE	TRUE	normalizable	FALSE	int
+flip_resets	{}.players.{}.stats.core.flip_resets	FALSE	FALSE	TRUE	normalizable	FALSE	int
+crossbar_hits	{}.players.{}.stats.core.crossbar_hits	FALSE	FALSE	TRUE	normalizable	FALSE	int
+bicycle_hits	{}.players.{}.stats.core.bicycle_hits	FALSE	FALSE	TRUE	normalizable	FALSE	int
+juggle_hits	{}.players.{}.stats.core.juggle_hits	FALSE	FALSE	TRUE	normalizable	FALSE	int
 bpm	{}.players.{}.stats.boost.bpm	FALSE	FALSE	TRUE	average	FALSE	float
 bcpm	{}.players.{}.stats.boost.bcpm	FALSE	FALSE	TRUE	average	FALSE	float
 avg_amount	{}.players.{}.stats.boost.avg_amount	FALSE	FALSE	TRUE	average	FALSE	float
@@ -123,6 +146,7 @@ percent_supersonic_speed	{}.players.{}.stats.movement.percent_supersonic_speed	F
 percent_ground	{}.players.{}.stats.movement.percent_ground	FALSE	FALSE	TRUE	average	FALSE	float
 percent_low_air	{}.players.{}.stats.movement.percent_low_air	FALSE	FALSE	TRUE	average	FALSE	float
 percent_high_air	{}.players.{}.stats.movement.percent_high_air	FALSE	FALSE	TRUE	average	FALSE	float
+percent_wall	{}.players.{}.stats.movement.percent_wall	FALSE	FALSE	TRUE	average	FALSE	float
 avg_distance_to_ball	{}.players.{}.stats.positioning.avg_distance_to_ball	FALSE	FALSE	TRUE	average	FALSE	float
 avg_distance_to_ball_possession	{}.players.{}.stats.positioning.avg_distance_to_ball_possession	FALSE	FALSE	TRUE	average	FALSE	float
 avg_distance_to_ball_no_possession	{}.players.{}.stats.positioning.avg_distance_to_ball_no_possession	FALSE	FALSE	TRUE	average	FALSE	float
@@ -141,3 +165,7 @@ percent_closest_to_ball	{}.players.{}.stats.positioning.percent_closest_to_ball	
 percent_farthest_from_ball	{}.players.{}.stats.positioning.percent_farthest_from_ball	FALSE	FALSE	TRUE	average	FALSE	float
 demos_inflicted	{}.players.{}.stats.demo.inflicted	FALSE	FALSE	TRUE	normalizable	FALSE	int
 demos_taken	{}.players.{}.stats.demo.taken	FALSE	FALSE	TRUE	normalizable	FALSE	int
+demos_inflicted_in_offensive_half	{}.players.{}.stats.demo.inflicted_in_offensive_half	FALSE	FALSE	TRUE	normalizable	FALSE	int
+demos_inflicted_in_defensive_half	{}.players.{}.stats.demo.inflicted_in_defensive_half	FALSE	FALSE	TRUE	normalizable	FALSE	int
+demos_taken_in_offensive_half	{}.players.{}.stats.demo.taken_in_offensive_half	FALSE	FALSE	TRUE	normalizable	FALSE	int
+demos_taken_in_defensive_half	{}.players.{}.stats.demo.taken_in_defensive_half	FALSE	FALSE	TRUE	normalizable	FALSE	int

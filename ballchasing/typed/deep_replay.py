@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from typing import Optional, List
 
-from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseReplay, BaseTeam, _BaseModel
+from ballchasing.typed.shared import _DictToTypeMixin, BasePlayer, BaseReplay, BaseTeam, _BaseModel, model
 
 
-@dataclass
+@model
 class CameraSettings(_BaseModel):
     fov: int = 0
     height: int = 0
@@ -15,13 +15,13 @@ class CameraSettings(_BaseModel):
     transition_speed: int = 0
 
 
-@dataclass
+@model
 class TeamBallStatsDR(_BaseModel):
     possession_time: float = 0.0
     time_in_side: float = 0.0
 
 
-@dataclass
+@model
 class TeamCoreStatsDR(_BaseModel):
     shots: int = 0
     shots_against: int = 0
@@ -31,9 +31,18 @@ class TeamCoreStatsDR(_BaseModel):
     assists: int = 0
     score: int = 0
     shooting_percentage: int = 0
+    epic_saves: int = 0
+    clears: int = 0
+    centers: int = 0
+    aerial_hits: int = 0
+    first_touches: int = 0
+    flip_resets: int = 0
+    crossbar_hits: int = 0
+    bicycle_hits: int = 0
+    juggle_hits: int = 0
 
 
-@dataclass
+@model
 class PlayerCoreStatsDR(_BaseModel):
     shots: int = 0
     shots_against: int = 0
@@ -44,9 +53,18 @@ class PlayerCoreStatsDR(_BaseModel):
     score: int = 0
     mvp: bool = False
     shooting_percentage: int = 0
+    epic_saves: int = 0
+    clears: int = 0
+    centers: int = 0
+    aerial_hits: int = 0
+    first_touches: int = 0
+    flip_resets: int = 0
+    crossbar_hits: int = 0
+    bicycle_hits: int = 0
+    juggle_hits: int = 0
 
 
-@dataclass
+@model
 class TeamBoostStatsDR(_BaseModel):
     bpm: int = 0
     bcpm: float = 0.0
@@ -70,9 +88,11 @@ class TeamBoostStatsDR(_BaseModel):
     time_boost_25_50: float = 0.0
     time_boost_50_75: float = 0.0
     time_boost_75_100: float = 0.0
+    percent_zero_boost: float = 0.0
+    percent_full_boost: float = 0.0
 
 
-@dataclass
+@model
 class PlayerBoostStatsDR(_BaseModel):
     bpm: int = 0
     bcpm: float = 0.0
@@ -104,7 +124,7 @@ class PlayerBoostStatsDR(_BaseModel):
     percent_boost_75_100: float = 0.0
 
 
-@dataclass
+@model
 class TeamMovementStatsDR(_BaseModel):
     total_distance: int = 0
     time_supersonic_speed: float = 0.0
@@ -115,9 +135,10 @@ class TeamMovementStatsDR(_BaseModel):
     time_high_air: float = 0.0
     time_powerslide: float = 0.0
     count_powerslide: int = 0
+    time_wall: float = 0.0
 
 
-@dataclass
+@model
 class PlayerMovementStatsDR(_BaseModel):
     avg_speed: int = 0
     total_distance: int = 0
@@ -137,9 +158,11 @@ class PlayerMovementStatsDR(_BaseModel):
     percent_ground: float = 0.0
     percent_low_air: float = 0.0
     percent_high_air: float = 0.0
+    time_wall: float = 0.0
+    percent_wall: float = 0.0
 
 
-@dataclass
+@model
 class TeamPositioningStatsDR(_BaseModel):
     time_defensive_third: float = 0.0
     time_neutral_third: float = 0.0
@@ -148,9 +171,12 @@ class TeamPositioningStatsDR(_BaseModel):
     time_offensive_half: float = 0.0
     time_behind_ball: float = 0.0
     time_infront_ball: float = 0.0
+    avg_distance_to_ball: float = 0.0
+    avg_distance_to_ball_possession: float = 0.0
+    avg_distance_to_ball_no_possession: float = 0.0
 
 
-@dataclass
+@model
 class PlayerPositioningStatsDR(_BaseModel):
     avg_distance_to_ball: int = 0
     avg_distance_to_ball_possession: int = 0
@@ -181,19 +207,27 @@ class PlayerPositioningStatsDR(_BaseModel):
     goals_against_while_last_defender: int = 0
 
 
-@dataclass
+@model
 class TeamDemoStatsDR(_BaseModel):
     inflicted: int = 0
     taken: int = 0
+    inflicted_in_defensive_half: int = 0
+    inflicted_in_offensive_half: int = 0
+    taken_in_defensive_half: int = 0
+    taken_in_offensive_half: int = 0
 
 
-@dataclass
+@model
 class PlayerDemoStatsDR(_BaseModel):
     inflicted: int = 0
     taken: int = 0
+    inflicted_in_defensive_half: int = 0
+    inflicted_in_offensive_half: int = 0
+    taken_in_defensive_half: int = 0
+    taken_in_offensive_half: int = 0
 
 
-@dataclass
+@model
 class TeamStatsDR(_BaseModel, _DictToTypeMixin):
     ball: Optional[TeamBallStatsDR] = None
     core: Optional[TeamCoreStatsDR] = None
@@ -203,7 +237,7 @@ class TeamStatsDR(_BaseModel, _DictToTypeMixin):
     demo: Optional[TeamDemoStatsDR] = None
 
 
-@dataclass
+@model
 class PlayerStatsDR(_BaseModel, _DictToTypeMixin):
     core: Optional[PlayerCoreStatsDR] = None
     boost: Optional[PlayerBoostStatsDR] = None
@@ -212,7 +246,7 @@ class PlayerStatsDR(_BaseModel, _DictToTypeMixin):
     demo: Optional[PlayerDemoStatsDR] = None
 
 
-@dataclass
+@model
 class PlayerDR(BasePlayer):
     # start_time: float = 0.0
     # end_time: float = 0.0
@@ -226,9 +260,10 @@ class PlayerDR(BasePlayer):
     camera: Optional[CameraSettings] = None
     steering_sensitivity: float = 0
     stats: Optional[PlayerStatsDR] = None
+    link: str = ""
 
 
-@dataclass
+@model
 class TeamDR(BaseTeam):
     # name: str = ""
     color: str = ""
@@ -236,13 +271,13 @@ class TeamDR(BaseTeam):
     stats: Optional[TeamStatsDR] = None
 
 
-@dataclass
+@model
 class Server(_BaseModel):
     name: str = ""
     region: str = ""
 
 
-@dataclass
+@model
 class DeepReplay(BaseReplay):
     # id: str = ""
     # link: str = ""
@@ -273,6 +308,7 @@ class DeepReplay(BaseReplay):
     blue: Optional[TeamDR] = None
     orange: Optional[TeamDR] = None
     server: Optional[Server] = None
+    play_duration: int = 0
 
     def scoreline(self):
         try:

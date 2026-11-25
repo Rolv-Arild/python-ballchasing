@@ -90,3 +90,15 @@ print(replay.blue.players[0].name)  # Example of easy attribute access
 group = api.get_group("g2-vs-bds-hwbf2eyolb", typed=True)
 print(group.players[0].name)
 ```
+
+Fields the API adds after a release don't break the typed objects: they are kept in the object's `_extra` dict
+(and included by `to_dict()`) until the classes get a field for them.
+
+---
+The client is checked against a snapshot of the [OpenAPI document](https://ballchasing.com/doc/api/openapi.json) in
+`tests/data/openapi.json`. To see what changed in the API since, and update the snapshot:
+
+```shell
+python scripts/check_api_spec.py           # exits with 1 if something changed
+python scripts/check_api_spec.py --update  # then run the tests to see what the client is missing
+```

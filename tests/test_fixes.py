@@ -162,14 +162,14 @@ class TestDeduplicationBeforeDeepFetch:
             yield from replays_batch
 
         with patch.object(api, "_iterable_from_request", side_effect=fake_iterable), \
-             patch.object(api, "get_replay", side_effect=lambda rid: {"id": rid, "deep": True}) as mock_get_replay:
+             patch.object(api, "get_replay", side_effect=lambda rid, typed=None: {"id": rid, "deep": True}) as mock_get_replay:
             results = list(api.get_replays(deep=True, deduplicate=True))
             assert len(results) == 2
             assert [r["id"] for r in results] == ["rep1", "rep2"]
             # get_replay should only have been called twice (for rep1 and rep2), NOT 3 times
             assert mock_get_replay.call_count == 2
-            mock_get_replay.assert_any_call("rep1")
-            mock_get_replay.assert_any_call("rep2")
+            mock_get_replay.assert_any_call("rep1", typed=False)
+            mock_get_replay.assert_any_call("rep2", typed=False)
 
 
 class TestCountZeroIterable:
@@ -375,7 +375,7 @@ class TestRateLimitingAndTracker:
         assert resolve_category("/replays/123/file") == RateLimitCategory.DOWNLOAD
         assert resolve_category("/replays/abc-123") == RateLimitCategory.CORE
         assert resolve_category("/groups/grp-456") == RateLimitCategory.CORE
-        assert resolve_category("/v2/upload") == RateLimitCategory.CORE
+        assert resolve_category("/v2/upload") == RateLimitCategory.UPLOAD
         assert resolve_category("/maps") == RateLimitCategory.CORE
         assert resolve_category("/") == RateLimitCategory.PING
 

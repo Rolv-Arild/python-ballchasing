@@ -1,10 +1,9 @@
-from dataclasses import dataclass
 from typing import Optional
 
-from ballchasing.typed.shared import User, BaseGroup
+from ballchasing.typed.shared import User, BaseGroup, model
 
 
-@dataclass
+@model
 class ShallowGroup(BaseGroup):
     # id: str = ""
     # link: str = ""
