@@ -2,7 +2,7 @@
 Report what changed in the ballchasing.com API since the snapshot in tests/data/openapi.json.
 
     python scripts/check_api_spec.py           # diff the live OpenAPI document against the snapshot
-    python scripts/check_api_spec.py --update  # ...then replace the snapshot (and run the tests: tests/test_openapi.py)
+    python scripts/check_api_spec.py --update  # ...then replace the snapshot and regenerate the typed models
 
 Exits with status 1 when something changed, so it can run in CI.
 """
@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 
 import requests
+
+from generate_models import OUTPUT as MODELS, generate
 
 SPEC_URL = "https://ballchasing.com/doc/api/openapi.json"
 SNAPSHOT = Path(__file__).parent.parent / "tests" / "data" / "openapi.json"
@@ -93,7 +95,9 @@ def main():
 
     if args.update:
         SNAPSHOT.write_text(json.dumps(live, indent=1, ensure_ascii=False) + "\n")
-        print(f"\nUpdated {SNAPSHOT}. Run the tests (tests/test_openapi.py) to see what the client needs.")
+        MODELS.write_text(generate(live))
+        print(f"\nUpdated {SNAPSHOT} and regenerated {MODELS}.")
+        print("Run the tests (tests/test_openapi.py) to see what else the client needs, e.g. new parameters.")
     return 1 if (added or removed or changed) else 0
 
 

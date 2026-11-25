@@ -321,3 +321,46 @@ def test_deep_typed_get_replays_on_typed_api():
     with patch.object(api._session, "request", side_effect=[listing, full]):
         replays = list(api.get_replays(count=1, deep=True))
     assert isinstance(replays[0], DeepReplay) and replays[0].play_duration == 300
+
+
+class TestGeneratedModels:
+    def test_models_py_is_up_to_date(self):
+        import importlib.util
+        path = Path(__file__).parent.parent / "scripts" / "generate_models.py"
+        module_spec = importlib.util.spec_from_file_location("generate_models", path)
+        generator = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(generator)
+        assert generator.OUTPUT.read_text() == generator.generate(SPEC), \
+            "models.py is out of date: run python scripts/generate_models.py"
+
+    def test_hierarchy_kept(self):
+        from ballchasing.typed import models
+        from ballchasing.typed.shared import BasePlayer, BaseReplay, BaseTeam, BasicGroup, BaseGroup
+        replay = DeepReplay(blue={"players": [{"name": "a"}]}, groups=[{"id": "g"}])
+        assert isinstance(replay, BaseReplay) and isinstance(ShallowReplay(), BaseReplay)
+        assert isinstance(replay.blue, BaseTeam) and isinstance(replay.blue, models.ReplayTeam)
+        assert isinstance(replay.blue.players[0], BasePlayer)
+        assert isinstance(replay.groups[0], BasicGroup)
+        assert isinstance(DeepGroup(), BaseGroup) and isinstance(ShallowGroup(), BasicGroup)
+        assert isinstance(models.GroupPlayerStats(), models.GroupPlayer)  # From allOf in the spec
+        assert isinstance(models.TeamCore(), models.CoreCounters)
+
+    def test_old_names_still_work(self):
+        from ballchasing.typed.deep_replay import TeamCoreStatsDR, PlayerDR
+        from ballchasing.typed.deep_group import PlayerWithStatsDG, TeamAverageDemoStatsDG, CreatorDG
+        from ballchasing.typed.shallow_replay import TeamSR
+        from ballchasing.typed.shared import PlayerID
+        from ballchasing.typed import models
+        assert TeamCoreStatsDR is models.TeamCore and PlayerDR is models.ReplayPlayer
+        assert PlayerWithStatsDG is models.GroupPlayerStats and TeamAverageDemoStatsDG is models.Demo
+        assert CreatorDG is models.User and TeamSR is models.ReplaySummaryTeam
+        assert repr(PlayerID(platform="steam", id="1")) == "steam:1"
+
+    def test_methods_and_equality(self):
+        from ballchasing.typed.shared import Rank
+        replay = DeepReplay(id="a", blue={"stats": {"core": {"goals": 2}}})
+        assert replay.scoreline() == (2, 0)  # Missing values default to 0, an int
+        assert replay == DeepReplay(id="a", title="something else")  # Hand-written __eq__ (same id), not the dataclass's
+        assert ShallowReplay(blue={"goals": 1}).scoreline() == (1, 0)
+        assert Rank.from_id("diamond-2") < Rank.from_id("champion-1")
+        assert DeepReplay(blue={"players": [{"name": "x"}]}).blue.players[0].pro is False  # Kept for compatibility

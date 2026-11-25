@@ -1,5 +1,2 @@
-# Imports for the objects meant to be initialized directly
-from ballchasing.typed.deep_group import DeepGroup
-from ballchasing.typed.deep_replay import DeepReplay
-from ballchasing.typed.shallow_group import ShallowGroup
-from ballchasing.typed.shallow_replay import ShallowReplay
+# Imports for the objects meant to be initialized directly. All the classes are in ballchasing.typed.models.
+from ballchasing.typed.models import DeepGroup, DeepReplay, ShallowGroup, ShallowReplay

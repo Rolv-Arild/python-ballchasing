@@ -17,7 +17,7 @@ from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyR
 from ballchasing.exceptions import DailyDownloadLimitError, UploadQuotaError
 from ballchasing.rate_limit import RateLimiter, RateLimitCategory, resolve_category, rate_limited
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
-from .typed.shared import BaseGroup, BasicGroup
+from .typed.models import BaseGroup, BasicGroup
 from .util.dates import to_rfc3339
 from .util.iterators import deduplicate as deduplicator
 from .util.stats import parse_replay_stats

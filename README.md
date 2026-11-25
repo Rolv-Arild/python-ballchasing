@@ -77,7 +77,8 @@ for group in groups:
 ---
 Additionally, there's the option to put responses (replays, groups) into typed objects for better type hinting and validation.
 It also attempts to fill in missing variables not returned by ballchasing (e.g. if a team has 0 goals they won't have a "goal" entry in the response)
-The classes can also be found under the `typing` folder and used as a reference for what the API returns.
+The classes are generated from the API's [OpenAPI document](https://ballchasing.com/doc/api/openapi.json) into
+`ballchasing/typed/models.py`, with each field's description, and can be used as a reference for what the API returns.
 
 ```python
 # When creating the API, you can specify a default setting for typing (defaults to False)
@@ -96,9 +97,12 @@ Fields the API adds after a release don't break the typed objects: they are kept
 
 ---
 The client is checked against a snapshot of the [OpenAPI document](https://ballchasing.com/doc/api/openapi.json) in
-`tests/data/openapi.json`. To see what changed in the API since, and update the snapshot:
+`tests/data/openapi.json`. To see what changed in the API since, update the snapshot and regenerate the typed models:
 
 ```shell
 python scripts/check_api_spec.py           # exits with 1 if something changed
-python scripts/check_api_spec.py --update  # then run the tests to see what the client is missing
+python scripts/check_api_spec.py --update  # then run the tests to see what else the client is missing
+python scripts/generate_models.py          # regenerate models.py alone (e.g. after changing the generator)
 ```
+
+Methods of the typed classes are written by hand in `ballchasing/typed/methods.py`.
