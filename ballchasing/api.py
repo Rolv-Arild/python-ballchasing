@@ -26,6 +26,12 @@ logger = logging.getLogger("ballchasing")
 
 DEFAULT_URL = "https://ballchasing.com/api"
 
+# Limits from the OpenAPI document (tests check them against it)
+PAGE_SIZE = 200  # Max `count` of GET /replays and GET /groups
+DUPLICATE_REPLAYS_PAGE_SIZE = 1000  # Max `count` of GET /groups/{id}/duplicate-replays
+MAX_ASSIGN_REPLAYS = 150  # Max assign_replays per PATCH /groups/{id}
+MAX_UNASSIGN_REPLAYS = 300  # Max unassign_replays per PATCH /groups/{id}
+
 PATRON_RATE_LIMIT_SLEEP_TIMES = {
     "regular": 3600 / 1000,
     "gold": 3600 / 2000,
@@ -153,7 +159,7 @@ class BallchasingApi:
         :raises HTTPError: if the request fails with a status code other than 2xx, 429, or allow_status_codes.
         """
         cat = RateLimitCategory(category) if category else resolve_category(url_or_endpoint)
-        headers = {"Authorization": auth_key or self.auth_key}
+        headers = {"Authorization": self.auth_key if auth_key is None else auth_key}
         url = f"{self.base_url}{url_or_endpoint}" if url_or_endpoint.startswith("/") else url_or_endpoint
         max_retries = 8
         retries = 0
@@ -162,8 +168,14 @@ class BallchasingApi:
         # Wait if global cooldown is active or if proactive pacing applies
         self.rate_limiter.before_request(cat)
 
+        # Uploaded file objects are read by each attempt: rewind them before retrying
+        file_objects = [f[1] if isinstance(f, tuple) else f for f in (params.get("files") or {}).values()]
+        file_positions = [(f, f.tell()) for f in file_objects if hasattr(f, "seek") and hasattr(f, "tell")]
+
         while True:
             try:
+                for f, position in file_positions:
+                    f.seek(position)
                 r: Response = self._session.request(method=method, url=url, headers=headers, **params)
                 if 200 <= r.status_code < 300 or r.status_code in allow_status_codes:
                     return r
@@ -234,7 +246,7 @@ class BallchasingApi:
         self._ping_result = result
         return result
 
-    def _iterable_from_request(self, url, params, prefetch=True, *, page_size=200,
+    def _iterable_from_request(self, url, params, prefetch=True, *, page_size=PAGE_SIZE,
                                category=RateLimitCategory.LIST):
         # Shared by get_replays and get_groups.
         # When prefetch=True, the next page is requested in a background
@@ -472,7 +484,11 @@ class BallchasingApi:
                     upload_token=upload_token,
                     raise_on_duplicate=raise_on_duplicate,
                 )
-        files = {"file": replay_file}
+        file_name = getattr(replay_file, "name", None)
+        file_name = os.path.basename(file_name) if isinstance(file_name, str) else ""
+        if not file_name.endswith(".replay"):  # The API refuses other file names (e.g. for a BytesIO)
+            file_name = "upload.replay"
+        files = {"file": (file_name, replay_file)}
         if match is not None:
             files["match"] = (None, match if isinstance(match, str) else json.dumps(match), "application/json")
         r = self._request(
@@ -643,7 +659,8 @@ class BallchasingApi:
         :param params: additional parameters for the PATCH request.
 
         The API takes at most 150 replays to assign and 300 to unassign per request; longer lists are sent in
-        several requests (the other fields go with the first one).
+        several requests (the other fields go with the first one). The API applies each request completely or not
+        at all, but with several requests an error (e.g. an invalid replay id) can leave the earlier ones applied.
         """
         payload = dict(params)
         if player_identification is not None:
@@ -656,13 +673,13 @@ class BallchasingApi:
             payload["shared"] = shared
         if dedup is not None:
             payload["dedup"] = dedup
-        assign = list(assign_replays) if assign_replays is not None else []
-        unassign = list(unassign_replays) if unassign_replays is not None else []
+        assign = [assign_replays] if isinstance(assign_replays, str) else list(assign_replays or [])
+        unassign = [unassign_replays] if isinstance(unassign_replays, str) else list(unassign_replays or [])
         while True:
             if assign:
-                payload["assign_replays"], assign = assign[:150], assign[150:]
+                payload["assign_replays"], assign = assign[:MAX_ASSIGN_REPLAYS], assign[MAX_ASSIGN_REPLAYS:]
             if unassign:
-                payload["unassign_replays"], unassign = unassign[:300], unassign[300:]
+                payload["unassign_replays"], unassign = unassign[:MAX_UNASSIGN_REPLAYS], unassign[MAX_UNASSIGN_REPLAYS:]
             self._request(f"/groups/{group_id}", "PATCH", json=payload, category=RateLimitCategory.CORE)
             if not assign and not unassign:
                 break
@@ -691,7 +708,7 @@ class BallchasingApi:
         """
         params = {"count": math.inf if count is None else count}
         yield from self._iterable_from_request(f"{self.base_url}/groups/{group_id}/duplicate-replays", params,
-                                               page_size=1000, category=RateLimitCategory.CORE)
+                                               page_size=DUPLICATE_REPLAYS_PAGE_SIZE, category=RateLimitCategory.CORE)
 
     @rate_limited(RateLimitCategory.CORE)
     def get_group_upload_token(self, group_id: str) -> dict | None:
@@ -798,13 +815,13 @@ class BallchasingApi:
         folder = Path(folder) / group_id
         if keep_tree_structure:
             folder.mkdir(parents=True, exist_ok=True)
-            for child_group in self.get_groups(group=group_id):
+            for child_group in self.get_groups(group=group_id, typed=False):
                 self.download_group(child_group["id"], folder, keep_tree_structure=True)
-            for replay in self.get_replays(group_id=group_id):
+            for replay in self.get_replays(group_id=group_id, typed=False):
                 self._download_replay_unless_lost(replay["id"], folder)
         else:
             folder.mkdir(parents=True, exist_ok=True)
-            for replay in self.get_group_replays(group_id):
+            for replay in self.get_group_replays(group_id, typed=False):
                 self._download_replay_unless_lost(replay["id"], folder)
 
     def _download_replay_unless_lost(self, replay_id: str, folder: Path) -> Path | None:

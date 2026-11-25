@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "python-ballchasing"
-version = "0.5.4"
+version = "0.6.0"
 authors = [
     { name = "Rolv-Arild Braaten", email = "rolv_arild@hotmail.com" },
 ]
@@ -27,6 +27,11 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["ballchasing*"]
 
 [tool.setuptools.package-data]
 ballchasing = ["*.tsv"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

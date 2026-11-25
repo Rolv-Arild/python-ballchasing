@@ -9,7 +9,7 @@ from .replays import get_pid
 @cache
 def get_stats_info():
     cur_path = Path(__file__).parent.parent  # stats_info.tsv lives in the ballchasing package root
-    with open(cur_path / "stats_info.tsv") as stats_info:
+    with open(cur_path / "stats_info.tsv", encoding="utf-8") as stats_info:
         stats_info = [line.strip().split("\t") for line in stats_info]
 
     header = stats_info[0]
@@ -28,7 +28,7 @@ def get_stats_info():
                     "datetime": datetime,
                 }[v]
             stat_info[k] = v
-        stats[stat_info["name"]] = stat_info
+        stats[stat_info["path"]] = stat_info  # Not by name: team and player stats share names
     return stats
 
 

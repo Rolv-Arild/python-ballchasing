@@ -1,9 +1,15 @@
 """Base classes and the @model decorator for the typed response objects (see models.py)."""
 import functools
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from typing import get_args
+
+try:
+    from typing import dataclass_transform
+except ImportError:  # Python 3.10
+    def dataclass_transform(**kwargs):
+        return lambda fn: fn
 
 from ballchasing.util.dates import from_rfc3339, to_rfc3339
 
@@ -12,6 +18,7 @@ logger = logging.getLogger("ballchasing")
 _reported_unknown_fields: set[tuple[str, str]] = set()
 
 
+@dataclass_transform(field_specifiers=(field,))
 def model(cls=None, /, **dataclass_kwargs):
     """
     Like ``@dataclass`` (and taking the same arguments), but the generated ``__init__`` accepts keyword arguments
@@ -78,10 +85,11 @@ class _DictToTypeMixin:
             actual_type = field.type
             if args := get_args(field.type):
                 actual_type = args[0]
-            if isinstance(value, dict):
+            is_model = isinstance(actual_type, type) and issubclass(actual_type, _BaseModel)
+            if isinstance(value, dict) and is_model:
                 new_value = actual_type(**value)
                 setattr(self, field.name, new_value)
-            elif isinstance(value, list):
+            elif isinstance(value, list) and is_model:
                 new_value = [actual_type(**item) if isinstance(item, dict) else item for item in value]
                 setattr(self, field.name, new_value)
             elif isinstance(value, str) and actual_type is datetime:

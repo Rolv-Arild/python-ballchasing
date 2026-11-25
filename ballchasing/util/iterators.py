@@ -68,7 +68,7 @@ def deduplicate(replays, check_dates=False):
 def _get_sorting_key_fn(sort_by, sort_dir):
     if sort_by == ReplaySortBy.REPLAY_DATE:
         key = "date"
-    elif sort_by == ReplaySortBy.UPLOAD_DATE:
+    elif sort_by in (ReplaySortBy.CREATED, "upload-date"):  # "upload-date" is the API's former name for it
         key = "created"
     else:
         raise ValueError(f"Unsupported sort_by: {sort_by}")

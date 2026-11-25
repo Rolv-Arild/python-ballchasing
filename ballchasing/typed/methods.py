@@ -51,8 +51,8 @@ class RankMethods:
 
     @classmethod
     def from_name(cls, rank_name: str):
-        rank_id = rank_name.lower().replace(" ", "-")
-        rank_id = rank_id.replace("i", "1").replace("ii", "2").replace("iii", "3")
+        numerals = {"i": "1", "ii": "2", "iii": "3"}  # E.g. "Champion II Division 3" -> "champion-2", division 3
+        rank_id = "-".join(numerals.get(part, part) for part in rank_name.lower().split())
         if "-division-" in rank_id:
             rank_id, division = rank_id.split("-division-")
             division = int(division)

@@ -10,6 +10,8 @@ from ballchasing.typed.methods import (
     RankMethods, ShallowReplayMethods, UserMethods,
 )
 
+_new_list = list  # For default_factory: in a class with a field named list, list is that field
+
 
 @model(eq=False)
 class BasicGroup(BasicGroupMethods, _BaseModel, _DictToTypeMixin):
@@ -22,7 +24,7 @@ class BasicGroup(BasicGroupMethods, _BaseModel, _DictToTypeMixin):
     link: str = ""
 
 
-@model(eq=False)
+@model
 class BaseGroup(BasicGroup):
     """
     Fields shared by ShallowGroup, DeepGroup.
@@ -50,12 +52,12 @@ class Rank(RankMethods, _BaseModel, _DictToTypeMixin):
     """
     A Rocket League rank (only set for ranked playlists).
     """
-    #: Rank code, as used by the `min-rank` and `max-rank` filters.
-    id: str = ""
     tier: int = 0
     #: Division, from 1 (absent for ranks without divisions).
     division: int = 0
     name: str = ""
+    #: Rank code, as used by the `min-rank` and `max-rank` filters.
+    id: str = ""
 
 
 @model(eq=False)
@@ -69,10 +71,10 @@ class BasePlayer(BasePlayerMethods, _BaseModel, _DictToTypeMixin):
     end_time: float = 0
     name: str = ""
     id: Optional[PlayerId] = None
-    mvp: bool = False
-    rank: Optional[Rank] = None
     #: Not sent for full replays (see ReplaySummaryPlayer): always False.
     pro: bool = False
+    mvp: bool = False
+    rank: Optional[Rank] = None
 
 
 @model(eq=False)
@@ -105,7 +107,7 @@ class BaseTeam(BaseTeamMethods, _BaseModel, _DictToTypeMixin):
     Fields shared by ReplayTeam, ReplaySummaryTeam.
     """
     name: str = ""
-    players: List[BasePlayer] = field(default_factory=list)
+    players: List[BasePlayer] = field(default_factory=_new_list)
 
 
 @model(eq=False)
@@ -116,9 +118,6 @@ class BaseReplay(BaseReplayMethods, _BaseModel, _DictToTypeMixin):
     id: str = ""
     #: API URL of the replay.
     link: str = ""
-    #: When the replay was uploaded.
-    created: Optional[datetime] = None
-    uploader: Optional[User] = None
     #: The id Rocket League gave the replay.
     rocket_league_id: str = ""
     #: Name of the player who recorded the replay.
@@ -139,10 +138,13 @@ class BaseReplay(BaseReplayMethods, _BaseModel, _DictToTypeMixin):
     #: When the game was played.
     date: Optional[datetime] = None
     visibility: str = ""
+    #: When the replay was uploaded.
+    created: Optional[datetime] = None
+    uploader: Optional[User] = None
     min_rank: Optional[Rank] = None
     max_rank: Optional[Rank] = None
     #: The groups of the replay that you can see.
-    groups: List[GroupRef] = field(default_factory=list)
+    groups: List[GroupRef] = field(default_factory=_new_list)
     blue: Optional[BaseTeam] = None
     orange: Optional[BaseTeam] = None
 
@@ -624,7 +626,7 @@ class GroupTeamStats(_BaseModel, _DictToTypeMixin):
     """
     id: str = ""
     name: str = ""
-    players: List[GroupPlayer] = field(default_factory=list)
+    players: List[GroupPlayer] = field(default_factory=_new_list)
     cumulative: Optional[GroupTeamCumulative] = None
     game_average: Optional[GroupTeamAverage] = None
 
@@ -643,7 +645,7 @@ class GroupDuplicates(_BaseModel, _DictToTypeMixin):
     unique_games: int = 0
 
 
-@model(eq=False)
+@model
 class DeepGroup(BaseGroup):
     """
     A replay group, with the stats of its players and teams.
@@ -654,9 +656,9 @@ class DeepGroup(BaseGroup):
     dedup: bool = False
     creator: Optional[User] = None
     #: Ids of the replays that could not be processed (only for the group's owner).
-    failed_replays: List[str] = field(default_factory=list)
-    players: List[GroupPlayerStats] = field(default_factory=list)
-    teams: List[GroupTeamStats] = field(default_factory=list)
+    failed_replays: List[str] = field(default_factory=_new_list)
+    players: List[GroupPlayerStats] = field(default_factory=_new_list)
+    teams: List[GroupTeamStats] = field(default_factory=_new_list)
     duplicates: Optional[GroupDuplicates] = None
 
 
@@ -697,7 +699,7 @@ class PlayerStats(_BaseModel, _DictToTypeMixin):
     demo: Optional[Demo] = None
 
 
-@model(eq=False)
+@model
 class ReplayPlayer(BasePlayer):
     car_id: int = 0
     car_name: str = ""
@@ -731,10 +733,10 @@ class TeamStats(_BaseModel, _DictToTypeMixin):
     demo: Optional[Demo] = None
 
 
-@model(eq=False)
+@model
 class ReplayTeam(BaseTeam):
     color: str = ""
-    players: List[ReplayPlayer] = field(default_factory=list)
+    players: List[ReplayPlayer] = field(default_factory=_new_list)
     stats: Optional[TeamStats] = None
 
 
@@ -747,7 +749,7 @@ class Server(_BaseModel, _DictToTypeMixin):
     region: str = ""
 
 
-@model(eq=False)
+@model
 class DeepReplay(DeepReplayMethods, BaseReplay):
     """
     A processed replay with its stats.
@@ -777,7 +779,7 @@ class DuplicateReplay(_BaseModel, _DictToTypeMixin):
 @model
 class DuplicateReplayList(_BaseModel, _DictToTypeMixin):
     #: One row per replay not counted when the group counts each game once, sorted by `replay_id`.
-    list: List[DuplicateReplay] = field(default_factory=list)
+    list: List[DuplicateReplay] = field(default_factory=_new_list)
     #: Full URL of the next page, absent on the last page.
     next: str = ""
 
@@ -790,7 +792,7 @@ class GroupCreated(_BaseModel, _DictToTypeMixin):
     link: str = ""
 
 
-@model(eq=False)
+@model
 class ShallowGroup(BaseGroup):
     """
     A group in a listing (no stats).
@@ -805,7 +807,7 @@ class ShallowGroup(BaseGroup):
 
 @model
 class GroupList(_BaseModel, _DictToTypeMixin):
-    list: List[ShallowGroup] = field(default_factory=list)
+    list: List[ShallowGroup] = field(default_factory=_new_list)
     #: Full URL of the next page, with the same filters: call it as is (with your `Authorization` header). Absent on
     #: the last page.
     next: str = ""
@@ -903,19 +905,19 @@ class ReplayBase(_BaseModel, _DictToTypeMixin):
     status: str = ""
 
 
-@model(eq=False)
+@model
 class ReplaySummaryPlayer(BasePlayer):
     score: int = 0
-    liquipedia_roles: List[str] = field(default_factory=list)
+    liquipedia_roles: List[str] = field(default_factory=_new_list)
 
 
 @model(eq=False)
 class ReplaySummaryTeam(BaseTeam):
     goals: int = 0
-    players: List[ReplaySummaryPlayer] = field(default_factory=list)
+    players: List[ReplaySummaryPlayer] = field(default_factory=_new_list)
 
 
-@model(eq=False)
+@model
 class ShallowReplay(ShallowReplayMethods, BaseReplay):
     """
     A replay in a listing (no stats).
@@ -931,7 +933,7 @@ class ReplayList(_BaseModel, _DictToTypeMixin):
     #: Total number of replays matching the filters (all pages), counted up to 10,000 (more reads 10000). Absent
     #: when no replay matches.
     count: int = 0
-    list: List[ShallowReplay] = field(default_factory=list)
+    list: List[ShallowReplay] = field(default_factory=_new_list)
     #: Full URL of the next page, with the same filters: call it as is (with your `Authorization` header). Absent on
     #: the last page.
     next: str = ""

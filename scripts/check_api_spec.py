@@ -18,6 +18,9 @@ from generate_models import OUTPUT as MODELS, generate
 SPEC_URL = "https://ballchasing.com/doc/api/openapi.json"
 SNAPSHOT = Path(__file__).parent.parent / "tests" / "data" / "openapi.json"
 METHODS = ("get", "post", "put", "patch", "delete")
+# Schema keywords the client can depend on (e.g. page sizes, list lengths), compared along with the types
+CONSTRAINTS = ("format", "minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength", "pattern", "default",
+               "const", "required")
 
 
 def summarize(spec: dict) -> dict[str, str]:
@@ -32,15 +35,34 @@ def summarize(spec: dict) -> dict[str, str]:
         return schema
 
     def schema_type(schema):
+        ref = schema.get("$ref", "").split("/")[-1]
         schema = resolve(schema)
         if "enum" in schema:
-            return f"enum{sorted(map(str, schema['enum']))}"
+            text = f"enum{sorted(map(str, schema['enum']))}"
+        elif "items" in schema:
+            text = f"array[{schema_type(schema['items'])}]"
+        elif "oneOf" in schema or "anyOf" in schema:
+            text = " | ".join(schema_type(s) for s in schema.get("oneOf", schema.get("anyOf")))
+        else:
+            text = str(schema.get("type", "object"))
+        constraints = {k: schema[k] for k in CONSTRAINTS if k in schema}
+        return (f"{ref}:" if ref else "") + text + (f" {json.dumps(constraints, sort_keys=True)}" if constraints else "")
+
+    def properties(key, schema, seen=()):
+        """Entries for an object schema's properties, and those of the inline objects (and arrays of) in it."""
+        if isinstance(schema, dict) and "$ref" in schema:
+            return  # Named schemas get their own entries
+        schema = resolve(schema)
+        if id(schema) in seen:
+            return
+        for part in schema.get("allOf", []) + schema.get("oneOf", []) + schema.get("anyOf", []):
+            if "$ref" not in part:
+                yield from properties(key, part, seen + (id(schema),))
+        for name, sub in schema.get("properties", {}).items():
+            yield f"{key}.{name}", schema_type(sub)
+            yield from properties(f"{key}.{name}", sub, seen + (id(schema),))
         if "items" in schema:
-            return f"array[{schema_type(schema['items'])}]"
-        for key in ("oneOf", "anyOf"):
-            if key in schema:
-                return " | ".join(schema_type(s) for s in schema[key])
-        return schema.get("type", "object")
+            yield from properties(f"{key}[]", schema["items"], seen + (id(schema),))
 
     out = {"version": spec["info"].get("version", "")}
     for path, item in spec["paths"].items():
@@ -54,21 +76,20 @@ def summarize(spec: dict) -> dict[str, str]:
                 req = " (required)" if param.get("required") else ""
                 out[f"{key} {param['in']}:{param['name']}"] = schema_type(param.get("schema", {})) + req
             for content_type, content in resolve(op.get("requestBody", {})).get("content", {}).items():
-                for name, prop in resolve(content.get("schema", {})).get("properties", {}).items():
-                    out[f"{key} body:{name}"] = schema_type(prop)
-            for status in op.get("responses", {}):
-                out[f"{key} -> {status}"] = "response"
+                out[f"{key} body ({content_type})"] = schema_type(content.get("schema", {}))
+                out.update(properties(f"{key} body", content.get("schema", {})))
+            for status, response in op.get("responses", {}).items():
+                for content_type, content in resolve(response).get("content", {}).items():
+                    out[f"{key} -> {status} ({content_type})"] = schema_type(content.get("schema", {}))
+                    out.update(properties(f"{key} -> {status}", content.get("schema", {})))
             if "x-rate-limits" in op:
                 out[f"{key} rate-limits"] = json.dumps(op["x-rate-limits"], sort_keys=True)
             if "x-daily-quota" in op:
                 out[f"{key} daily-quota"] = json.dumps(op["x-daily-quota"], sort_keys=True)
     for name, schema in spec.get("components", {}).get("schemas", {}).items():
-        parts = [schema] + schema.get("allOf", [])
-        for part in parts:
-            for prop, sub in resolve(part).get("properties", {}).items():
-                out[f"schema {name}.{prop}"] = schema_type(sub)
-        if "enum" in schema:
-            out[f"schema {name}"] = schema_type(schema)
+        out[f"schema {name}"] = schema_type(schema) + "".join(
+            f" allOf:{part['$ref'].split('/')[-1]}" for part in schema.get("allOf", []) if "$ref" in part)
+        out.update(properties(f"schema {name}", schema))
     return out
 
 
@@ -80,7 +101,7 @@ def main():
     response = requests.get(SPEC_URL, headers={"User-Agent": "python-ballchasing-spec-check"}, timeout=30)
     response.raise_for_status()
     live = response.json()
-    old, new = summarize(json.loads(SNAPSHOT.read_text())), summarize(live)
+    old, new = summarize(json.loads(SNAPSHOT.read_text(encoding="utf-8"))), summarize(live)
 
     added = sorted(new.keys() - old.keys())
     removed = sorted(old.keys() - new.keys())
@@ -90,15 +111,21 @@ def main():
             print(f"\n{label} ({len(keys)}):")
         for k in keys:
             print(f"  {k}: {old.get(k, '')} -> {new.get(k, '')}" if label == "Changed" else f"  {k}: {(new | old)[k]}")
-    if not (added or removed or changed):
+    # Anything else that changes the typed models (e.g. descriptions) counts too
+    models = generate(live)
+    models_change = models != MODELS.read_text(encoding="utf-8")
+    if models_change:
+        print(f"\nThe typed models ({MODELS.name}) would change.")
+    changes = bool(added or removed or changed or models_change)
+    if not changes:
         print(f"No changes since the snapshot (version {new['version']}).")
 
     if args.update:
-        SNAPSHOT.write_text(json.dumps(live, indent=1, ensure_ascii=False) + "\n")
-        MODELS.write_text(generate(live))
+        SNAPSHOT.write_text(json.dumps(live, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        MODELS.write_text(models, encoding="utf-8")
         print(f"\nUpdated {SNAPSHOT} and regenerated {MODELS}.")
         print("Run the tests (tests/test_openapi.py) to see what else the client needs, e.g. new parameters.")
-    return 1 if (added or removed or changed) else 0
+    return 1 if changes else 0
 
 
 if __name__ == "__main__":

@@ -58,6 +58,23 @@ METHODS = {
     "DeepReplay": "DeepReplayMethods",
     "ShallowReplay": "ShallowReplayMethods",
 }
+# Classes using the __eq__/__repr__ of their base's mixin. Other subclasses get the dataclass's own (field by field),
+# as with the hand-written classes before: e.g. BaseReplay compares ids, while DeepReplay compares all fields.
+INHERIT_DUNDERS = {
+    "ReplaySummaryTeam",  # Was TeamSR, which had BaseTeam's __eq__
+    "GroupRef",  # Was BasicGroup
+}
+# Field order of classes that may be constructed with positional arguments: their order before generation.
+# The other classes follow the OpenAPI document's order.
+FIELD_ORDER = {
+    "Rank": ["tier", "division", "name", "id"],
+    "BasePlayer": ["start_time", "end_time", "name", "id", "pro", "mvp", "rank"],
+    "BaseReplay": ["id", "link", "rocket_league_id", "recorder", "map_code", "map_name", "playlist_id",
+                   "playlist_name", "duration", "overtime", "overtime_seconds", "season", "season_type", "date",
+                   "visibility", "created", "uploader", "min_rank", "max_rank", "groups", "blue", "orange"],
+}
+# Names a field can't have: class bodies in models.py refer to them (a field would shadow them)
+RESERVED = {"field", "datetime", "Any", "List", "Optional", "model", "_new_list"}
 PRIMITIVES = {"integer": "int", "number": "float", "boolean": "bool", "string": "str"}
 DEFAULTS = {"int": "0", "float": "0", "bool": "False", "str": '""'}
 
@@ -68,6 +85,7 @@ class Generator:
         # name -> {"description", "fields": {name: (type, description)} (own fields), "flat": (all fields)}
         self.classes: dict[str, dict] = {}
         self.parents: dict[str, str | None] = {}  # class -> its base class (from allOf, or BASES)
+        self.sources: dict[str, int] = {}  # class -> id() of its schema, to detect two schemas with the same name
 
     # --- Schema helpers
 
@@ -93,12 +111,17 @@ class Generator:
     # --- Collecting classes
 
     def register(self, name: str, schema: dict) -> str:
-        if name in self.classes:
-            return name
         schema = self.resolve(schema)
+        if name in self.classes:
+            if self.sources[name] != id(schema):
+                raise ValueError(f"Two different schemas would be generated as class {name}: "
+                                 f"add a RENAMES or INLINE_NAMES entry")
+            return name
+        self.sources[name] = id(schema)
         cls = self.classes[name] = {"description": schema.get("description", ""), "fields": {}, "flat": {}}
         for field_name, prop in self.properties(schema).items():
-            assert field_name.isidentifier() and not keyword.iskeyword(field_name), (name, field_name)
+            if not field_name.isidentifier() or keyword.iskeyword(field_name) or field_name in RESERVED:
+                raise ValueError(f"{name}.{field_name} can't be a dataclass field name")
             cls["flat"][field_name] = (self.type_of(prop, name, field_name), prop.get("description", ""))
         cls["flat"].update(EXTRA_FIELDS.get(name, {}))
         # allOf with one object $ref (e.g. PlayerCore: allOf CoreCounters + own fields) -> subclass of it
@@ -147,16 +170,20 @@ class Generator:
             for operation in path_item.values():
                 if not isinstance(operation, dict):
                     continue
+                operation_id = operation.get("operationId", "")
+                owner = operation_id[:1].upper() + operation_id[1:] + "Response"  # Name of an inline response object
                 for status, response in operation.get("responses", {}).items():
                     content = self.resolve(response).get("content", {}).get("application/json")
                     if status.startswith("2") and content and "schema" in content:
-                        self.type_of(content["schema"], "Response", "body")
+                        self.type_of(content["schema"], owner + (status if status != "200" else ""), "")
 
     # --- Base classes
 
     def make_bases(self):
         """Create the BASES classes, and make them the base class of their members (instead of an allOf one)."""
         for base, (members, base_parent) in BASES.items():  # In order: a base's own base comes first
+            if base in self.classes:
+                raise ValueError(f"A schema would be generated as class {base}, a name of BASES")
             inherited = set(self.all_fields(base_parent)) if base_parent else set()
             first = self.classes[members[0]]["flat"]
             common, overridden = {}, set()
@@ -202,17 +229,21 @@ class Generator:
         self.make_bases()
         parents = self.parents
 
-        order, seen = [], set()
+        order, done, visiting = [], set(), []
 
         def visit(name):
-            if name in seen:
+            if name in done:
                 return
-            seen.add(name)
-            deps = [parents.get(name)] + [re.sub(r"^List\[(.*)]$", r"\1", t) for t, _ in
-                                         self.classes[name]["fields"].values()]
+            if name in visiting:  # The classes are used at runtime (to convert dicts), so they can't be forward refs
+                raise ValueError(f"Cyclic class references: {' -> '.join(visiting + [name])}")
+            visiting.append(name)
+            deps = [parents.get(name)] + [dep for t, _ in self.classes[name]["fields"].values()
+                                         for dep in re.findall(r"\w+", t)]
             for dep in deps:
                 if dep in self.classes:
                     visit(dep)
+            visiting.pop()
+            done.add(name)
             order.append(name)
 
         for name in sorted(self.classes):
@@ -221,12 +252,28 @@ class Generator:
         methods = load_methods_module()
         mixins_used = sorted(set(METHODS.values()))
 
+        def chain(name):  # The class and its generated base classes
+            names = [name]
+            while parents.get(names[-1]):
+                names.append(parents[names[-1]])
+            return names
+
+        def mixin_attributes(names):
+            return {attr for n in names if n in METHODS
+                    for c in getattr(methods, METHODS[n]).__mro__[:-1] for attr in c.__dict__}
+
         def overrides(name, dunder):
-            while name:
-                if name in METHODS and any(dunder in c.__dict__ for c in getattr(methods, METHODS[name]).__mro__[:-1]):
-                    return True
-                name = parents.get(name)
-            return False
+            return dunder in mixin_attributes(chain(name) if name in INHERIT_DUNDERS else [name])
+
+        for name, cls in self.classes.items():
+            if clash := set(self.all_fields(name)) & (mixin_attributes(chain(name)) | set(self.classes)):
+                raise ValueError(f"Fields of {name} would shadow methods or classes: {sorted(clash)}")
+            if name in FIELD_ORDER:
+                field_order = FIELD_ORDER[name]
+                if set(field_order) != set(cls["fields"]):
+                    raise ValueError(f"FIELD_ORDER[{name!r}] doesn't list exactly the fields of {name}: "
+                                     f"{sorted(set(field_order) ^ set(cls['fields']))}")
+                cls["fields"] = {k: cls["fields"][k] for k in field_order}
 
         version = self.spec["info"].get("version", "")
         lines = [
@@ -240,6 +287,8 @@ class Generator:
             "from ballchasing.typed.methods import (",
             *textwrap.wrap(", ".join(mixins_used) + ",", 116, initial_indent="    ", subsequent_indent="    "),
             ")",
+            "",
+            "_new_list = list  # For default_factory: in a class with a field named list, list is that field",
         ]
         for name in order:
             cls = self.classes[name]
@@ -281,13 +330,14 @@ def clean(text: str) -> str:
 
 
 def docstring(text: str) -> str:
-    wrapped = textwrap.wrap(clean(text).replace('"""', "'''"), 116, initial_indent="    ", subsequent_indent="    ")
+    text = clean(text).replace("\\", "\\\\").replace('"""', "'''")  # Docstrings aren't raw strings
+    wrapped = textwrap.wrap(text, 116, initial_indent="    ", subsequent_indent="    ")
     return '    """\n' + "\n".join(wrapped) + '\n    """'
 
 
 def annotation(type_: str, classes: dict) -> str:
     if type_.startswith("List["):
-        return f"{type_} = field(default_factory=list)"
+        return f"{type_} = field(default_factory=_new_list)"
     if type_ in DEFAULTS:
         return f"{type_} = {DEFAULTS[type_]}"
     if type_ == "Any":
@@ -300,12 +350,12 @@ def main():
     parser.add_argument("--check", action="store_true", help="only check that models.py is up to date")
     args = parser.parse_args()
 
-    code = generate(json.loads(SPEC_PATH.read_text()))
+    code = generate(json.loads(SPEC_PATH.read_text(encoding="utf-8")))
     if args.check:
-        up_to_date = OUTPUT.exists() and OUTPUT.read_text() == code
+        up_to_date = OUTPUT.exists() and OUTPUT.read_text(encoding="utf-8") == code
         print(f"{OUTPUT.relative_to(ROOT)} is {'up to date' if up_to_date else 'OUT OF DATE'}")
         return 0 if up_to_date else 1
-    OUTPUT.write_text(code)
+    OUTPUT.write_text(code, encoding="utf-8")
     print(f"Wrote {OUTPUT.relative_to(ROOT)}")
     return 0
 
