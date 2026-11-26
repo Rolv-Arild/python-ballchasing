@@ -50,7 +50,7 @@ except Exception:
 # Import the main classes and constants to make them easily accessible to users.
 from .api import BallchasingApi
 from .rate_limit import RateLimiter, RateLimitCategory, rate_limited
-from .exceptions import QuotaExceededError, DailyDownloadLimitError, UploadQuotaError
+from .exceptions import QuotaExceededError, DailyDownloadLimitError, UploadQuotaError, AccountRestrictedError
 
 Api = BallchasingApi  # For importing like `import ballchasing; api = ballchasing.Api`
 

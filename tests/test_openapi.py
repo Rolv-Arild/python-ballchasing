@@ -14,7 +14,8 @@ from requests.exceptions import HTTPError
 
 from ballchasing import constants
 from ballchasing.api import BallchasingApi, PATRON_RATE_LIMIT_SLEEP_TIMES
-from ballchasing.exceptions import DailyDownloadLimitError, QuotaExceededError, UploadQuotaError
+from ballchasing.exceptions import AccountRestrictedError, DailyDownloadLimitError, QuotaExceededError, \
+    UploadQuotaError
 from ballchasing.rate_limit import RateLimiter, RateLimitCategory, CATEGORY_HOURLY_SLEEP_TIMES
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
 from ballchasing.util.stats import get_stats_info, parse_replay_stats
@@ -306,6 +307,67 @@ class TestQuotas:
                 patch.object(api._session, "request", side_effect=[replays, limit]):
             with pytest.raises(QuotaExceededError):
                 api.download_group("g", tmp_path)
+
+
+class TestAccountRestrictions:
+    """403s with a ``code``: restrictions put on the account, which must not be retried."""
+    CODES = (AccountRestrictedError.ACCOUNT_BANNED, AccountRestrictedError.API_ACCESS_BLOCKED,
+             AccountRestrictedError.FILES_SUSPENDED)
+
+    def test_codes_match_spec(self):
+        schema = SPEC["components"]["schemas"]["RestrictedError"]
+        assert enum_values(properties(schema)["code"]) == set(self.CODES)
+
+    def test_every_endpoint_documents_restrictions(self):
+        for path, item in SPEC["paths"].items():
+            for method, op in item.items():
+                if method in ("get", "post", "put", "patch", "delete"):
+                    response = resolve(op["responses"]["403"])
+                    schema = json.dumps(response["content"]["application/json"]["schema"])
+                    assert "RestrictedError" in schema, f"{method.upper()} {path}"
+
+    @pytest.mark.parametrize("code", CODES)
+    def test_restriction_raises_without_retrying(self, api, code):
+        body = {"code": code, "error": "Do not retry these requests while this restriction is active."}
+        with patch.object(api._session, "request", return_value=make_mock_response(403, json_data=body)) as m, \
+                patch("time.sleep") as sleep:
+            with pytest.raises(AccountRestrictedError) as e:
+                api.get_maps()
+        assert m.call_count == 1 and sleep.call_count == 0
+        assert e.value.code == code and isinstance(e.value, HTTPError)
+        assert code in str(e.value) and body["error"] in str(e.value)
+
+    def test_upload_restriction_raises(self, api):
+        body = {"code": "account_banned", "error": "banned"}
+        with patch.object(api._session, "request", return_value=make_mock_response(403, json_data=body)):
+            with pytest.raises(AccountRestrictedError):
+                api.upload_replay(io.BytesIO(b"data"))
+
+    def test_403_without_code_is_plain_http_error(self, api):
+        resp = make_mock_response(403, json_data={"error": "this account is deleted"})
+        with patch.object(api._session, "request", return_value=resp):
+            with pytest.raises(HTTPError) as e:
+                api.upload_replay(io.BytesIO(b"data"))
+        assert not isinstance(e.value, AccountRestrictedError)
+
+    def test_download_group_skips_suspended_files(self, api, tmp_path):
+        replays = make_mock_response(json_data={"list": [{"id": "theirs"}, {"id": "mine"}]})
+        suspended = make_mock_response(403, json_data={"code": "files_suspended", "error": "x"})
+        ok = make_mock_response(content=b"replay-bytes")
+        with patch.object(api, "get_groups", return_value=iter([])), \
+                patch.object(api._session, "request", side_effect=[replays, suspended, ok]):
+            api.download_group("g", tmp_path)
+        assert sorted(p.name for p in (tmp_path / "g").iterdir()) == ["mine.replay"]
+
+    @pytest.mark.parametrize("code", ["account_banned", "api_access_blocked"])
+    def test_download_group_stops_on_other_restrictions(self, api, tmp_path, code):
+        replays = make_mock_response(json_data={"list": [{"id": "r"}, {"id": "s"}]})
+        restricted = make_mock_response(403, json_data={"code": code, "error": "x"})
+        with patch.object(api, "get_groups", return_value=iter([])), \
+                patch.object(api._session, "request", side_effect=[replays, restricted]) as m:
+            with pytest.raises(AccountRestrictedError):
+                api.download_group("g", tmp_path)
+        assert m.call_count == 2
 
 
 class TestRateLimitTiers:

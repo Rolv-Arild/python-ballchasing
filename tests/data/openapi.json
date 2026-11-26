@@ -112,6 +112,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "500": {
       "$ref": "#/components/responses/ServerError"
      }
@@ -317,14 +320,33 @@
       "$ref": "#/components/responses/Unauthorized"
      },
      "403": {
-      "description": "The account behind the key is deleted.",
+      "description": "The account behind the key is deleted, or banned by the site's owner (`code: account_banned`; do not retry while the ban is active). An account whose API access is blocked can still upload.",
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/Error"
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/Error"
+          },
+          {
+           "$ref": "#/components/schemas/RestrictedError"
+          }
+         ]
         },
-        "example": {
-         "error": "this account is deleted"
+        "examples": {
+         "deleted": {
+          "summary": "Account deleted",
+          "value": {
+           "error": "this account is deleted"
+          }
+         },
+         "banned": {
+          "summary": "Account banned",
+          "value": {
+           "code": "account_banned",
+           "error": "This account has been banned from the API and from uploading because it was used together with other accounts to go past the download limits, which the terms of use do not allow. Do not retry these requests while this restriction is active."
+          }
+         }
         }
        }
       }
@@ -947,6 +969,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "429": {
       "$ref": "#/components/responses/TooManyRequests"
      },
@@ -1548,6 +1573,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "$ref": "#/components/responses/NotFound"
      },
@@ -1662,6 +1690,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "description": "No such replay (or not yours, for `title` and `visibility`), or no such group of yours.",
       "content": {
@@ -1745,6 +1776,9 @@
      },
      "401": {
       "$ref": "#/components/responses/Unauthorized"
+     },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
      },
      "404": {
       "$ref": "#/components/responses/NotFound"
@@ -1849,6 +1883,9 @@
      },
      "401": {
       "$ref": "#/components/responses/Unauthorized"
+     },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
      },
      "404": {
       "$ref": "#/components/responses/NotFound"
@@ -2121,6 +2158,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "429": {
       "$ref": "#/components/responses/TooManyRequests"
      },
@@ -2243,6 +2283,9 @@
      },
      "401": {
       "$ref": "#/components/responses/Unauthorized"
+     },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
      },
      "413": {
       "$ref": "#/components/responses/PayloadTooLarge"
@@ -2967,6 +3010,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "$ref": "#/components/responses/NotFound"
      },
@@ -3110,6 +3156,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "description": "No such group, or not yours.",
       "content": {
@@ -3182,6 +3231,9 @@
      },
      "401": {
       "$ref": "#/components/responses/Unauthorized"
+     },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
      },
      "404": {
       "$ref": "#/components/responses/NotFound"
@@ -3306,6 +3358,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "$ref": "#/components/responses/NotFound"
      },
@@ -3402,6 +3457,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "404": {
       "description": "No such group, not yours, or group upload tokens are not available to your account.\n",
       "content": {
@@ -3497,6 +3555,9 @@
      },
      "401": {
       "$ref": "#/components/responses/Unauthorized"
+     },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
      },
      "404": {
       "description": "No such group, not yours, or group upload tokens are not available to your account.\n",
@@ -3676,6 +3737,9 @@
      "401": {
       "$ref": "#/components/responses/Unauthorized"
      },
+     "403": {
+      "$ref": "#/components/responses/Restricted"
+     },
      "429": {
       "$ref": "#/components/responses/TooManyRequests"
      },
@@ -3733,7 +3797,7 @@
    },
    "ReplayFileDownloads": {
     "type": "object",
-    "description": "Downloads of original replay files uploaded by **other accounts**, today (UTC), against the account's daily limit\n(see [Download a replay file](#tag/replays/download-replay-file)). One count for the API (`GET /api/replays/{id}/file`),\nthe site's download button and group zips together; each replay counts once a day, and the replays the account\nuploaded never count. Once `used` reaches `max`, downloading a replay not downloaded yet today answers 429 until\n`resets_at`. Reading it (pinging) never changes it.\n",
+    "description": "Downloads of original replay files uploaded by **other accounts**, today (UTC), against the account's daily limit\n(see [Download a replay file](#tag/replays/download-replay-file)). One count for the API (`GET /api/replays/{id}/file`),\nthe site's download button and group zips together; each replay counts once a day, and the replays the account\nuploaded never count. Once `used` reaches a `max` above 0, downloading a replay not downloaded yet today answers 429\nuntil `resets_at`. A `max` of 0 means downloading other accounts' replays is turned off for the account: those\ndownloads answer 403, also after `resets_at`. Reading it (pinging) never changes it.\n",
     "required": [
      "used",
      "resets_at"
@@ -3741,11 +3805,11 @@
     "properties": {
      "used": {
       "type": "integer",
-      "description": "Distinct replays of other accounts downloaded today (UTC). Can be above `max` after the account's tier went\ndown during the day.\n"
+      "description": "Distinct replays of other accounts downloaded today (UTC). Can be above `max` after the account's limit went\ndown during the day. For an account that shares its daily limit with other accounts, the distinct replays they\ndownloaded together today.\n"
      },
      "max": {
       "type": "integer",
-      "description": "The account's daily limit (absent when unlimited)."
+      "description": "The account's daily limit (absent when unlimited; `0` when downloading other accounts' replays is turned off for the account, see above)."
      },
      "unlimited": {
       "type": "boolean",
@@ -3853,6 +3917,31 @@
       "description": "The server that answered, to quote when reporting a problem."
      }
     }
+   },
+   "RestrictedError": {
+    "description": "A restriction the site's owner put on the account.",
+    "allOf": [
+     {
+      "$ref": "#/components/schemas/Error"
+     },
+     {
+      "type": "object",
+      "required": [
+       "code"
+      ],
+      "properties": {
+       "code": {
+        "type": "string",
+        "enum": [
+         "account_banned",
+         "api_access_blocked",
+         "files_suspended"
+        ],
+        "description": "Which restriction refused the request. Do not retry the refused requests while it is active: `account_banned` refuses every API call; `api_access_blocked` refuses reads (`GET`/`HEAD`) except `GET /api/`, writes and uploads still work; `files_suspended` refuses replay files uploaded by other players, your own still download."
+       }
+      }
+     }
+    ]
    },
    "Visibility": {
     "type": "string",
@@ -6096,6 +6185,39 @@
           "Imp": "Sorry",
           "YOU": "Centering"
          }
+        }
+       }
+      }
+     }
+    }
+   },
+   "Restricted": {
+    "description": "The account is restricted (see `code`). Do not retry these requests while the restriction is active. A shared or lowered daily limit is not a 403: it shows up as the usual 429 with its own message.",
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RestrictedError"
+      },
+      "examples": {
+       "banned": {
+        "summary": "Account banned",
+        "value": {
+         "code": "account_banned",
+         "error": "This account has been banned from the API and from uploading because it was used together with other accounts to go past the download limits, which the terms of use do not allow. Do not retry these requests while this restriction is active."
+        }
+       },
+       "apiBlocked": {
+        "summary": "API reads blocked",
+        "value": {
+         "code": "api_access_blocked",
+         "error": "API access is turned off for this account because it was used together with other accounts to go past the download limits, which the terms of use do not allow. Uploading still works. Do not retry these requests while this restriction is active."
+        }
+       },
+       "filesSuspended": {
+        "summary": "Other players' files suspended",
+        "value": {
+         "code": "files_suspended",
+         "error": "Downloads of replay files uploaded by other players are turned off for this account because it was used together with other accounts to go past the download limits, which the terms of use do not allow. You can still download your own replays. Do not retry these requests while this restriction is active."
         }
        }
       }

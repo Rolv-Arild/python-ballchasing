@@ -14,7 +14,7 @@ from requests.exceptions import ConnectionError, HTTPError, Timeout
 
 from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyReplaySortBy, AnySortDir, \
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
-from ballchasing.exceptions import DailyDownloadLimitError, UploadQuotaError
+from ballchasing.exceptions import AccountRestrictedError, DailyDownloadLimitError, UploadQuotaError
 from ballchasing.rate_limit import RateLimiter, RateLimitCategory, resolve_category, rate_limited
 from ballchasing.typed import DeepReplay, ShallowReplay, DeepGroup, ShallowGroup
 from .typed.models import BaseGroup, BasicGroup
@@ -156,6 +156,7 @@ class BallchasingApi:
         :raises ConnectionError: if the connection fails after max retries.
         :raises DailyDownloadLimitError: on a 429 for the daily limit on other people's replay files.
         :raises UploadQuotaError: on a 429 for the account's upload quota.
+        :raises AccountRestrictedError: on a 403 for a restriction put on the account (never retried).
         :raises HTTPError: if the request fails with a status code other than 2xx, 429, or allow_status_codes.
         """
         cat = RateLimitCategory(category) if category else resolve_category(url_or_endpoint)
@@ -210,6 +211,9 @@ class BallchasingApi:
                             f"Rate limited at {url} [{cat.value}] ({self.rate_limit_count} total rate limits), retrying in {wait_time:.1f}s..."
                         )
                     time.sleep(wait_time)
+                elif r.status_code == 403:
+                    self._raise_for_restriction(r)
+                    r.raise_for_status()
                 elif r.status_code in (502, 503, 504):
                     raise ConnectionError(f"Server error {r.status_code}: {r.reason or 'Transient gateway error'}")
                 else:
@@ -239,6 +243,17 @@ class BallchasingApi:
             raise UploadQuotaError(
                 f"Upload quota reached ({body.get('max_uploads')} per {body.get('window')}): {body.get('error')}",
                 response=r, body=body)
+
+    @staticmethod
+    def _raise_for_restriction(r: Response) -> None:
+        """Raise for the 403s that are restrictions on the account (they have a ``code``)."""
+        try:
+            body = r.json()
+        except ValueError:
+            return
+        if isinstance(body, dict) and body.get("code"):
+            raise AccountRestrictedError(
+                f"403 Account restricted ({body['code']}) for url: {r.url}: {body.get('error')}", response=r, body=body)
 
     @rate_limited(RateLimitCategory.PING)
     def ping(self) -> dict:
@@ -824,7 +839,9 @@ class BallchasingApi:
         :param folder: the folder in which to create the group folder.
         :param keep_tree_structure: whether to create new folders for child groups.
 
-        Replays whose file the server lost (410) are skipped with a warning.
+        Replays whose file the server lost (410) are skipped with a warning, and so are replays uploaded by other
+        players while the account's downloads of those are suspended (403 ``files_suspended``): your own replays in
+        the group still download.
         """
         folder = Path(folder) / group_id
         if keep_tree_structure:
@@ -844,6 +861,10 @@ class BallchasingApi:
         except HTTPError as e:
             if e.response is not None and e.response.status_code == 410:
                 logger.warning(f"Skipping replay {replay_id}: the server lost its file (410)")
+                return None
+            if isinstance(e, AccountRestrictedError) and e.code == AccountRestrictedError.FILES_SUSPENDED:
+                logger.warning(f"Skipping replay {replay_id}: downloads of other players' replays are suspended "
+                               f"for this account (403 files_suspended)")
                 return None
             raise
 

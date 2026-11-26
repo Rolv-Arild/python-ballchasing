@@ -843,13 +843,16 @@ class ReplayFileDownloads(_BaseModel, _DictToTypeMixin):
     Downloads of original replay files uploaded by **other accounts**, today (UTC), against the account's daily
     limit (see Download a replay file). One count for the API (`GET /api/replays/{id}/file`), the site's download
     button and group zips together; each replay counts once a day, and the replays the account uploaded never count.
-    Once `used` reaches `max`, downloading a replay not downloaded yet today answers 429 until `resets_at`. Reading
-    it (pinging) never changes it.
+    Once `used` reaches a `max` above 0, downloading a replay not downloaded yet today answers 429 until
+    `resets_at`. A `max` of 0 means downloading other accounts' replays is turned off for the account: those
+    downloads answer 403, also after `resets_at`. Reading it (pinging) never changes it.
     """
-    #: Distinct replays of other accounts downloaded today (UTC). Can be above `max` after the account's tier went
-    #: down during the day.
+    #: Distinct replays of other accounts downloaded today (UTC). Can be above `max` after the account's limit went
+    #: down during the day. For an account that shares its daily limit with other accounts, the distinct replays
+    #: they downloaded together today.
     used: int = 0
-    #: The account's daily limit (absent when unlimited).
+    #: The account's daily limit (absent when unlimited; `0` when downloading other accounts' replays is turned off
+    #: for the account, see above).
     max: int = 0
     #: `true` when the account has no daily limit (`max` is then absent).
     unlimited: bool = False
