@@ -10,7 +10,7 @@ from typing import BinaryIO, Iterable, Iterator
 from urllib.parse import parse_qs, urlparse
 
 from requests import sessions, Response
-from requests.exceptions import ConnectionError, HTTPError, Timeout
+from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
 
 from ballchasing.constants import GroupSortBy, SortDir, AnySeason, AnyRank, AnyReplaySortBy, AnySortDir, \
     AnyVisibility, AnyGroupSortBy, AnyPlayerIdentification, AnyTeamIdentification, AnyMatchResult, NoneOrMore
@@ -231,7 +231,7 @@ class BallchasingApi:
         """Raise for the 429s that are quotas (not worth retrying soon) rather than rate limits."""
         try:
             body = r.json()
-        except ValueError:
+        except (ValueError, RequestException):  # Not JSON, or the body could not be read
             return
         if not isinstance(body, dict):
             return
@@ -249,7 +249,7 @@ class BallchasingApi:
         """Raise for the 403s that are restrictions on the account (they have a ``code``)."""
         try:
             body = r.json()
-        except ValueError:
+        except (ValueError, RequestException):  # Not JSON, or the body could not be read
             return
         if isinstance(body, dict) and body.get("code"):
             raise AccountRestrictedError(
@@ -839,23 +839,37 @@ class BallchasingApi:
         :param folder: the folder in which to create the group folder.
         :param keep_tree_structure: whether to create new folders for child groups.
 
-        Replays whose file the server lost (410) are skipped with a warning, and so are replays uploaded by other
-        players while the account's downloads of those are suspended (403 ``files_suspended``): your own replays in
-        the group still download.
+        Replays whose file the server lost (410) are skipped with a warning. If the account's downloads of other
+        players' replays are suspended (403 ``files_suspended``), the rest of those are skipped without requesting
+        them, and the account's own replays in the group still download.
         """
-        folder = Path(folder) / group_id
-        if keep_tree_structure:
-            folder.mkdir(parents=True, exist_ok=True)
-            for child_group in self.get_groups(group=group_id, typed=False):
-                self.download_group(child_group["id"], folder, keep_tree_structure=True)
-            for replay in self.get_replays(group_id=group_id, typed=False):
-                self._download_replay_unless_lost(replay["id"], folder)
-        else:
-            folder.mkdir(parents=True, exist_ok=True)
-            for replay in self.get_group_replays(group_id, typed=False):
-                self._download_replay_unless_lost(replay["id"], folder)
+        state = {"suspended": False, "skipped": 0}
+        self._download_group(group_id, Path(folder), keep_tree_structure, state)
+        if state["skipped"]:
+            logger.warning(f"Skipped {state['skipped']} replays of other players in group {group_id}: downloads of "
+                           f"those are suspended for this account (403 files_suspended)")
 
-    def _download_replay_unless_lost(self, replay_id: str, folder: Path) -> Path | None:
+    def _download_group(self, group_id: str, folder: Path, keep_tree_structure: bool, state: dict):
+        folder = folder / group_id
+        folder.mkdir(parents=True, exist_ok=True)
+        if keep_tree_structure:
+            for child_group in self.get_groups(group=group_id, typed=False):
+                self._download_group(child_group["id"], folder, True, state)
+            replays = self.get_replays(group_id=group_id, typed=False)
+        else:
+            replays = self.get_group_replays(group_id, typed=False)
+        for replay in replays:
+            self._download_group_replay(replay, folder, state)
+
+    def _download_group_replay(self, replay: dict, folder: Path, state: dict) -> Path | None:
+        replay_id = replay["id"]
+        if state["suspended"]:
+            # Other players' replays would be refused too: don't send them. Without a ping (do_initial_ping=False),
+            # the account's own replays can't be told apart, so those are skipped as well.
+            steam_id = (self._ping_result or {}).get("steam_id")
+            if steam_id is None or (replay.get("uploader") or {}).get("steam_id") != steam_id:
+                state["skipped"] += 1
+                return None
         try:
             return self.download_replay(replay_id, folder)
         except HTTPError as e:
@@ -863,8 +877,8 @@ class BallchasingApi:
                 logger.warning(f"Skipping replay {replay_id}: the server lost its file (410)")
                 return None
             if isinstance(e, AccountRestrictedError) and e.code == AccountRestrictedError.FILES_SUSPENDED:
-                logger.warning(f"Skipping replay {replay_id}: downloads of other players' replays are suspended "
-                               f"for this account (403 files_suspended)")
+                state["suspended"] = True
+                state["skipped"] += 1
                 return None
             raise
 

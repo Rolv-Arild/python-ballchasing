@@ -350,14 +350,39 @@ class TestAccountRestrictions:
                 api.upload_replay(io.BytesIO(b"data"))
         assert not isinstance(e.value, AccountRestrictedError)
 
-    def test_download_group_skips_suspended_files(self, api, tmp_path):
-        replays = make_mock_response(json_data={"list": [{"id": "theirs"}, {"id": "mine"}]})
+    def test_download_group_skips_suspended_files(self, api, tmp_path, caplog):
+        api._ping_result = {"steam_id": "me"}
+        listing = [{"id": "theirs1", "uploader": {"steam_id": "other"}}, {"id": "mine1", "uploader": {"steam_id": "me"}},
+                   {"id": "theirs2", "uploader": {"steam_id": "other"}}, {"id": "mine2", "uploader": {"steam_id": "me"}}]
+        replays = make_mock_response(json_data={"list": listing})
         suspended = make_mock_response(403, json_data={"code": "files_suspended", "error": "x"})
-        ok = make_mock_response(content=b"replay-bytes")
+        ok1, ok2 = make_mock_response(content=b"1"), make_mock_response(content=b"2")
         with patch.object(api, "get_groups", return_value=iter([])), \
-                patch.object(api._session, "request", side_effect=[replays, suspended, ok]):
+                patch.object(api._session, "request", side_effect=[replays, suspended, ok1, ok2]) as m:
             api.download_group("g", tmp_path)
-        assert sorted(p.name for p in (tmp_path / "g").iterdir()) == ["mine.replay"]
+        # theirs2 is skipped without a request: it would be refused too
+        assert m.call_count == 4
+        assert "theirs2" not in str(m.call_args_list)
+        assert sorted(p.name for p in (tmp_path / "g").iterdir()) == ["mine1.replay", "mine2.replay"]
+        assert "Skipped 2 replays" in caplog.text
+
+    def test_download_group_without_ping_stops_requesting_after_suspension(self, api, tmp_path):
+        replays = make_mock_response(json_data={"list": [{"id": "a"}, {"id": "b"}, {"id": "c"}]})
+        suspended = make_mock_response(403, json_data={"code": "files_suspended", "error": "x"})
+        with patch.object(api, "get_groups", return_value=iter([])), \
+                patch.object(api._session, "request", side_effect=[replays, suspended]) as m:
+            api.download_group("g", tmp_path)  # Own replays can't be told apart without the ping's steam_id
+        assert m.call_count == 2
+
+    def test_unreadable_error_body_is_plain_http_error(self, api):
+        from requests.exceptions import ChunkedEncodingError
+        resp = make_mock_response(403)
+        with patch.object(api._session, "request", return_value=resp) as m, \
+                patch.object(type(resp), "json", side_effect=ChunkedEncodingError("dropped")):
+            with pytest.raises(HTTPError) as e:
+                api.get_maps()
+            assert not isinstance(e.value, AccountRestrictedError) and m.call_count == 1
+            assert BallchasingApi._raise_for_quota(make_mock_response(429)) is None  # Then a plain rate limit
 
     @pytest.mark.parametrize("code", ["account_banned", "api_access_blocked"])
     def test_download_group_stops_on_other_restrictions(self, api, tmp_path, code):
